@@ -1,0 +1,16 @@
+[
+    {
+        "conversations": [
+            {
+                "from": "human",
+                "value": ""
+            },
+            {
+                "from": "gpt",
+                "value": ""
+            }
+        ],
+        "image": "image.jpg",
+        "meta": "dir=./"
+    }
+]
