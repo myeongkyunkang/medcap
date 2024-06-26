@@ -86,11 +86,6 @@ class ChatDataset(Dataset):
         return self._prepare_sample(sample)
 
     def _prepare_sample(self, sample: Mapping[str, Any]) -> Tuple[List[int], List[int]]:
-        image, meta = sample.get('image', ''), sample.get('meta', '')  # UPDATED
-        feat = None  # UPDATED
-        if meta != '':  # UPDATED
-            meta_dict = dict(m.split('=') for m in meta.split(';'))  # UPDATED
-            feat = self.preprocess(Image.open(os.path.join(meta_dict['dir'], f"{image}")).convert('RGB'))  # UPDATED
         messages = self._convert_to_messages(sample, self.train_on_input)
         # messages = self.chat_format.format(messages)  # UPDATED
         validate_messages(messages)
@@ -104,7 +99,11 @@ class ChatDataset(Dataset):
         # Wherever mask == True, set to CROSS_ENTROPY_IGNORE_IDX. Otherwise keep as tokens
         labels = list(np.where(mask, CROSS_ENTROPY_IGNORE_IDX, tokens))
         assert len(tokens) == len(labels)
-
+        image, meta = sample.get('image', ''), sample.get('meta', '')  # UPDATED
+        feat = None  # UPDATED
+        if meta != '':  # UPDATED
+            meta_dict = dict(m.split('=') for m in meta.split(';'))  # UPDATED
+            feat = self.preprocess(Image.open(os.path.join(meta_dict['dir'], f"{image}")).convert('RGB'))  # UPDATED
         return tokens, labels, feat  # UPDATED
 
 

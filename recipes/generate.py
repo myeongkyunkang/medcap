@@ -15,6 +15,7 @@ from torch import nn
 
 from torchtune import config, utils
 
+import pandas as pd  # UPDATED
 from torchtune.custom_generate_func import *  # UPDATED
 
 logger = utils.get_logger("DEBUG")
@@ -150,10 +151,37 @@ def main(cfg: DictConfig) -> None:
     recipe.setup(cfg=cfg)
     ##################
     # UPDATED
+    ckp_name = cfg.checkpointer.checkpoint_files[0].split(".")[0]
     if cfg.get('test_metrics', False):
-        test_metrics(recipe, cfg)
+        text_metrics, out_dict = test_metrics(recipe, cfg)
+        pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'test_out_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
+        with open(os.path.join(cfg.output_dir, f'test_{ckp_name}.csv'), 'wt') as f:
+            for k, v in text_metrics.items():
+                f.write(f"{k},{np.mean(v)}\n")
     if cfg.get('test_vqarad', False):
-        test_vqarad(recipe, cfg)
+        vqa_out_path = os.path.join(cfg.output_dir, f'test_out_vqarad_{ckp_name}.csv')
+        if os.path.isfile(vqa_out_path):
+            out_dict = pd.read_csv(vqa_out_path)
+        else:
+            out_dict = test_vqarad(recipe, cfg)
+            pd.DataFrame(out_dict).to_csv(vqa_out_path, index=False, encoding='utf-8-sig')
+        # evaluate vqa
+        correct_list, out_dict = eval_vqa(recipe, cfg, out_dict)
+        pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'acc_out_vqarad_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
+        with open(os.path.join(cfg.output_dir, f'acc_vqarad_{ckp_name}.csv'), 'wt') as f:
+            f.write(f"{np.mean(correct_list)}\n")
+    if cfg.get('test_vqaslake', False):
+        vqa_out_path = os.path.join(cfg.output_dir, f'test_out_vqaslake_{ckp_name}.csv')
+        if os.path.isfile(vqa_out_path):
+            out_dict = pd.read_csv(vqa_out_path)
+        else:
+            out_dict = test_vqaslake(recipe, cfg)
+            pd.DataFrame(out_dict).to_csv(vqa_out_path, index=False, encoding='utf-8-sig')
+        # evaluate vqa
+        correct_list, out_dict = eval_vqa(recipe, cfg, out_dict)
+        pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'acc_out_vqaslake_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
+        with open(os.path.join(cfg.output_dir, f'acc_vqaslake_{ckp_name}.csv'), 'wt') as f:
+            f.write(f"{np.mean(correct_list)}\n")
     ##################
 
 

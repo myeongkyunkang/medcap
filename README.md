@@ -42,6 +42,7 @@ To achieve this, we have made minimal modifications to the original torchtune co
 Check via Ctrl+F "# UPDATED" # less than 100 lines updated
 Add recipes/configs/custom_generation_config.yaml  # use "tune cp generation" and update to be compatible with llama3
 Add torchtune/custom_generate_func.py  # for custom testing
+Add torchtune/custom_generate_func_utils.py
 Update recipes/full_finetune_distributed.py
 Update recipes/generate.py
 Update torchtune/datasets/_chat.py
@@ -50,16 +51,16 @@ Update torchtune/utils/_generation.py
 Update torchtune/utils/collate.py 
 ```
 
-## Get Started
+## Get started
 
 Follow the instructions on the official [`Meta-Llama-3-8B-Instruct`](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct) repository to ensure you have access to the official Llama model weights.
 Once you have confirmed access, download the weights to your local machine.
 
-Download the [PMC-OA](https://huggingface.co/datasets/axiong/pmc_oa) dataset to your local machine and then run the following.
+Download the [SLAKE](https://www.med-vqa.com/slake/) and [SLAKE-text](https://huggingface.co/datasets/myeongkyunkang/SLAKE-text) dataset to your local machine and then run the following.
 
 ```
-# preprocess PMC-OA
-python tools/convert_pmcoa_to_sharegpt.py
+# preprocess SLAKE
+python tools/convert_slake_text_to_sharegpt.py
 ```
 
 ### Running a fine-tuning recipe
@@ -68,7 +69,7 @@ python tools/convert_pmcoa_to_sharegpt.py
 python
 import os
 GPU='0'
-name='pmcoa'
+name='slake'
 vision='biomedclip'
 epochs=10
 seed=1
@@ -103,7 +104,7 @@ os.system(cmd)
 python
 import os
 GPU='0'
-name='pmcoa'
+name='slake'
 vision='biomedclip'
 epochs=10
 seed=1
@@ -119,7 +120,7 @@ for epoch in range(epochs):
         top_k=null \
         temperature=0 \
         vision={vision} \
-        dataset_source={data_dir}/{name}_test.json \
+        dataset_source={data_dir}/{name}_val.json \
         dataset_conversation_style=sharegpt \
         dataset_chat_format=ChatFormat \
         dataset_max_seq_len=200 \
@@ -131,22 +132,37 @@ for epoch in range(epochs):
     os.system(cmd)
 ```
 
-### Modify configs for VQA
+### Modify configs for SLAKE VQA
 
 ```
 # Modify the configs in the test script
-test_vqarad=True
-dataset_source=./datasets/VQA_RAD
+test_vqaslake=True
+dataset_source=./datasets/SLAKE
 ```
+
+### Use Meta-Llama-3-70B-Instruct for SLAKE VQA
+
+```
+torchrun --nproc_per_node 8 chat_llama3.py \
+    --ckpt_dir ./models/llama3/Meta-Llama-3-70B-Instruct/ \
+    --tokenizer_path ./models/llama3/Meta-Llama-3-70B-Instruct/tokenizer.model \
+    --temperature 0 --max_seq_len 200 --max_batch_size 8 \
+    --exp eval_vqa \
+    --csv_path "./results_medcap/slake_biomedclip_trainonly/test_out_vqaslake_meta_model_9.csv"
+```
+
+### Other fine-tuning recipes
+
+Please refer to [README_FINETUNE.md](README_FINETUNE.md)
 
 ## Pretrained models
 
 Coming soon.
 
 <table><tbody>
-<tr><td><a href="https://huggingface.co/datasets/axiong/pmc_oa">PMC-OA</a></td>
-<td><a href="">download</a></td></tr>
 <tr><td><a href="https://www.med-vqa.com/slake/">SLAKE</a></td>
+<td><a href="">download</a></td></tr>
+<tr><td><a href="https://huggingface.co/datasets/axiong/pmc_oa">PMC-OA</a></td>
 <td><a href="">download</a></td></tr>
 <tr><td><a href="https://openi.nlm.nih.gov/imgs/collections/NLMCXR_png.tgz">Open-i (NLMCXR)</a></td>
 <td><a href="">download</a></td></tr>
@@ -155,8 +171,8 @@ Coming soon.
 </tbody></table>
 
 Evaluated on the following datasets:
-[PMC-VQA](https://huggingface.co/datasets/xmcmic/PMC-VQA),
 [SLAKE](https://www.med-vqa.com/slake/),
+[PMC-VQA](https://huggingface.co/datasets/xmcmic/PMC-VQA),
 [VQA_RAD](https://osf.io/89kps/),
 [Rad-ReStruct](https://github.com/ChantalMP/Rad-ReStruct),
 [MIMIC-CXR-VQA](https://github.com/baeseongsu/mimic-cxr-vqa)
@@ -176,6 +192,9 @@ pip install bitsandbytes
 
 pip install pandas scikit-learn rouge-score nltk
 pip install open_clip_torch==2.24.0 transformers
+
+# Use 70B for VQA evaluation
+pip install git+https://github.com/meta-llama/llama3@f2bb4c5b1d1a11152740267e0827eb087d7fef64
 ```
 
 ## Citation
