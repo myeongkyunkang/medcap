@@ -51,8 +51,8 @@ def test_metrics(recipe, cfg):
     # calc metrics
     text_metrics = {}
     for output, generated in zip(out_dict['output'], out_dict['generated']):
-        text_metrics = calculate_text_metrics(output.lower(), generated.strip().lower())
-        for k, v in text_metrics.items():
+        _text_metrics = calculate_text_metrics(output.lower(), generated.strip().lower())
+        for k, v in _text_metrics.items():
             if k not in text_metrics:
                 text_metrics[k] = []
             text_metrics[k].append(v)
