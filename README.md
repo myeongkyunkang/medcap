@@ -131,7 +131,7 @@ for epoch in range(epochs):
 
 ```
 # Modify the configs in the test script
-test_vqaslake=True
+test_slake=True
 dataset_source=./datasets/SLAKE
 ```
 
@@ -141,13 +141,16 @@ dataset_source=./datasets/SLAKE
 python
 import os
 epochs=10
+name='slake'
+vision='biomedclip'
+postfix_result=''
 for epoch in range(epochs):
     cmd=f"torchrun --nproc_per_node 8 chat_llama3.py \
         --ckpt_dir ./models/llama3/Meta-Llama-3-70B-Instruct \
         --tokenizer_path ./models/llama3/Meta-Llama-3-70B-Instruct/tokenizer.model \
         --temperature 0 --max_seq_len 200 --max_batch_size 8 \
         --exp eval_vqa \
-        --csv_path ./results_medcap/slake_biomedclip/test_out_vqaslake_meta_model_{epoch}.csv"
+        --csv_path ./results_medcap/{name}_{vision}{postfix_result}/test_out_{name}_meta_model_{epoch}.csv"
     print(cmd)
     os.system(cmd)
 ```

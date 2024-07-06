@@ -222,7 +222,7 @@ def eval_vqa(recipe, cfg, answer_dict):
     return correct_list, out_dict
 
 
-def test_vqaslake(recipe, cfg):
+def test_slake(recipe, cfg):
     json_path = os.path.join(cfg.dataset_source, 'test.json')
     image_dir = os.path.join(cfg.dataset_source, 'imgs')
 

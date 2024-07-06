@@ -154,13 +154,13 @@ def main(cfg: DictConfig) -> None:
         with open(os.path.join(cfg.output_dir, f'test_{ckp_name}.csv'), 'wt') as f:
             for metric, score in text_metrics:
                 f.write(f'{metric},{score:.6f}\n')
-    if cfg.get('test_vqaslake', False):
-        out_dict = test_vqaslake(recipe, cfg)
-        pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'test_out_vqaslake_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
+    if cfg.get('test_slake', False):
+        out_dict = test_slake(recipe, cfg)
+        pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'test_out_slake_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
         if cfg.get('eval_vqa', False):
             correct_list, out_dict = eval_vqa(recipe, cfg, out_dict)
-            pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'acc_out_vqaslake_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
-            with open(os.path.join(cfg.output_dir, f'acc_vqaslake_{ckp_name}.csv'), 'wt') as f:
+            pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'acc_out_slake_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
+            with open(os.path.join(cfg.output_dir, f'acc_slake_{ckp_name}.csv'), 'wt') as f:
                 f.write(f"{np.mean(correct_list)}\n")
     if cfg.get('test_vqarad', False):
         out_dict = test_vqarad(recipe, cfg)
