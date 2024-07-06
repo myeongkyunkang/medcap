@@ -1,11 +1,49 @@
+import datetime
 import json
 import os
 from copy import deepcopy
 
 import numpy as np
+from pycocoevalcap.bleu.bleu import Bleu
+from pycocoevalcap.cider.cider import Cider
+from pycocoevalcap.eval import COCOEvalCap
+from pycocoevalcap.meteor.meteor import Meteor
+from pycocoevalcap.rouge.rouge import Rouge
+from pycocoevalcap.tokenizer.ptbtokenizer import PTBTokenizer
+from pycocotools.coco import COCO
 
-from torchtune.custom_generate_func_utils import *
 from torchtune.datasets._chat import chat_dataset
+
+MRI_TOKENS = '①' * 32
+
+VQA_CACHE = {}
+
+
+class _COCOEvalCap(COCOEvalCap):
+    def evaluate(self):
+        imgIds, gts, res = self.params['image_id'], {}, {}
+        for imgId in imgIds:
+            gts[imgId] = self.coco.imgToAnns[imgId]
+            res[imgId] = self.cocoRes.imgToAnns[imgId]
+        tokenizer = PTBTokenizer()
+        gts, res = tokenizer.tokenize(gts), tokenizer.tokenize(res)
+        scorers = [
+            (Bleu(4), ["Bleu_1", "Bleu_2", "Bleu_3", "Bleu_4"]),
+            (Meteor(), "METEOR"),
+            (Rouge(), "ROUGE_L"),
+            (Cider(), "CIDEr"),
+            # (Spice(), "SPICE")  # UPDATED
+        ]
+        for scorer, method in scorers:
+            score, scores = scorer.compute_score(gts, res)
+            if type(method) == list:
+                for sc, scs, m in zip(score, scores, method):
+                    self.setEval(sc, m)
+                    self.setImgToEvalImgs(scs, gts.keys(), m)
+            else:
+                self.setEval(score, method)
+                self.setImgToEvalImgs(scores, gts.keys(), method)
+        self.setEvalImgs()
 
 
 def post(generated_text, all_special_tokens):
@@ -41,6 +79,7 @@ def test_metrics(recipe, cfg):
 
         generated_text = post(recipe.generate(cfg=cfg, feat=feat), recipe._tokenizer.all_special_tokens)
         print('=' * 20)
+        print(_sample['image'])
         print(generated_text)
 
         out_dict['image'].append(_sample['image'])
@@ -49,17 +88,25 @@ def test_metrics(recipe, cfg):
         out_dict['generated'].append(generated_text)
 
     # calc metrics
-    text_metrics = {}
-    for output, generated in zip(out_dict['output'], out_dict['generated']):
-        _text_metrics = calculate_text_metrics(output.lower(), generated.strip().lower())
-        for k, v in _text_metrics.items():
-            if k not in text_metrics:
-                text_metrics[k] = []
-            text_metrics[k].append(v)
+    ref_path, gen_path = os.path.join(cfg.output_dir, f'.tmp ref {datetime.datetime.now()}.json'), os.path.join(cfg.output_dir, f'.tmp gen {datetime.datetime.now()}.json')
+    ref_data, gen_data = {'images': [], 'annotations': []}, []
+    for i, (out, gen) in enumerate(zip(out_dict['output'], out_dict['generated'])):
+        ref_data['images'].append({'id': f'{i}'})
+        ref_data['annotations'].append({'image_id': f'{i}', 'id': f'{i}', 'caption': out})
+        gen_data.append({'image_id': f'{i}', 'caption': gen})
+    with open(ref_path, 'w') as json_file:
+        json.dump(ref_data, json_file)
+    with open(gen_path, 'w') as json_file:
+        json.dump(gen_data, json_file)
+    coco = COCO(ref_path)
+    coco_result = coco.loadRes(gen_path)
+    coco_eval = _COCOEvalCap(coco, coco_result)
+    coco_eval.evaluate()
+    text_metrics = coco_eval.eval.items()
 
-    # print metrics
-    for k, v in text_metrics.items():
-        print(f"{k}: {np.mean(v)}")
+    # print text_metrics
+    for metric, score in text_metrics:
+        print(f'{metric}: {score:.6f}')
 
     return text_metrics, out_dict
 
@@ -103,7 +150,12 @@ def vqa(question, filename, image_dir, sample, recipe, cfg, ds, instruction_desc
     if feat is not None:
         feat = feat.to(device=recipe._device, dtype=recipe._dtype).unsqueeze(0)
 
-    generated_text = post(recipe.generate(cfg=cfg, feat=feat.clone()), recipe._tokenizer.all_special_tokens)
+    global VQA_CACHE
+    if f'{image_dir}/{filename}' in VQA_CACHE:
+        generated_text = VQA_CACHE[f'{image_dir}/{filename}']
+    else:
+        generated_text = post(recipe.generate(cfg=cfg, feat=feat.clone()), recipe._tokenizer.all_special_tokens)
+        VQA_CACHE[f'{image_dir}/{filename}'] = generated_text
 
     # make prompt
     _sample['conversations'][1]['value'] = generated_text
@@ -146,6 +198,7 @@ def eval_vqa(recipe, cfg, answer_dict):
         generated_text, prompt = chat(question, sample_0, recipe, cfg, ds)
 
         print('=' * 20)
+        print(image)
         print(prompt)
         print(generated_text)
 
@@ -187,9 +240,10 @@ def test_vqaslake(recipe, cfg):
     )
     sample_0 = deepcopy(ds._data[0])
 
+    print('Test only with closed-answer types.')
     out_dict = {'image': [], 'instruction': [], 'output': [], 'generated': []}
     for elem in json_data:
-        if elem['q_lang'] != 'en':
+        if elem['q_lang'] != 'en' or elem['answer_type'] != 'CLOSED':
             continue
 
         generated_text, prompt = vqa(elem['question'],
@@ -197,6 +251,7 @@ def test_vqaslake(recipe, cfg):
                                      sample=sample_0, recipe=recipe, cfg=cfg, ds=ds)
 
         print('=' * 20)
+        print(elem['img_name'])
         print(prompt)
         print(generated_text)
         print('Correct answer:', elem['answer'])
@@ -227,13 +282,18 @@ def test_vqarad(recipe, cfg):
     )
     sample_0 = deepcopy(ds._data[0])
 
+    print('Test only with closed-answer types.')
     out_dict = {'image': [], 'instruction': [], 'output': [], 'generated': []}
     for elem in json_data:
+        if (elem['phrase_type'] not in ['test_freeform', 'test_para']) or (elem['answer_type'] != 'CLOSED'):
+            continue
+
         generated_text, prompt = vqa(elem['question'],
                                      filename=elem['image_name'], image_dir=image_dir,
                                      sample=sample_0, recipe=recipe, cfg=cfg, ds=ds)
 
         print('=' * 20)
+        print(elem['image_name'])
         print(prompt)
         print(generated_text)
         print('Correct answer:', elem['answer'])

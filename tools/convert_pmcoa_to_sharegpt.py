@@ -23,7 +23,7 @@ if __name__ == '__main__':
     image_dir = os.path.join(pmcoa_dir, 'caption_T060_filtered_top4_sep_v0_subfigures')
     train_jsonl_path = os.path.join(pmcoa_dir, 'train.jsonl')
     val_jsonl_path = os.path.join(pmcoa_dir, 'valid.jsonl')
-    test_jsoln_path = os.path.join(pmcoa_dir, 'test.jsonl')
+    test_jsonl_path = os.path.join(pmcoa_dir, 'test.jsonl')
 
     save_dir = './datasets/medcap/'
     save_train_path = os.path.join(save_dir, 'pmcoa_train.json')
@@ -35,15 +35,15 @@ if __name__ == '__main__':
 
     train_data = read_jsonl(train_jsonl_path)
     val_data = read_jsonl(val_jsonl_path)
-    test_data = read_jsonl(test_jsoln_path)
+    test_data = read_jsonl(test_jsonl_path)
 
 
-    def convert(data):
+    def convert(data, random_instruction=False):
         out = []
         for elem in data:
             out.append({
                 'conversations': [
-                    {"from": "human", "value": MRI_TOKENS + '\n\n' + random.choice(INSTRUCTION_LIST)},
+                    {"from": "human", "value": MRI_TOKENS + '\n\n' + (random.choice(INSTRUCTION_LIST) if random_instruction else INSTRUCTION_LIST[0])},
                     {"from": "gpt", "value": elem['caption'].replace('①', '(1)')}  # ① is our special token
                 ],
                 'image': elem['image'],
@@ -53,7 +53,7 @@ if __name__ == '__main__':
 
 
     with open(save_train_path, 'w') as json_file:
-        json.dump(convert(train_data), json_file, indent=4)
+        json.dump(convert(train_data, random_instruction=True), json_file, indent=4)
 
     with open(save_val_path, 'w') as json_file:
         json.dump(convert(val_data), json_file, indent=4)

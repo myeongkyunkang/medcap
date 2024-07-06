@@ -46,16 +46,6 @@ class InferenceRecipe:
 
     def setup(self, cfg: DictConfig) -> None:
         checkpointer = config.instantiate(cfg.checkpointer)
-        from torchtune.models.convert_weights import _FROM_META  # UPDATED
-        if 'biomedclip' in cfg.get('vision', ''):  # UPDATED
-            import open_clip  # UPDATED
-            model_clip, _, _ = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224', device=self._device)  # UPDATED
-            for k, _ in model_clip.visual.named_parameters():  # UPDATED
-                _FROM_META[f'visual.{k}'] = f'visual.{k}'  # UPDATED
-            _FROM_META['projector.0.weight'] = 'projector.0.weight'  # UPDATED
-            _FROM_META['projector.0.bias'] = 'projector.0.bias'  # UPDATED
-            _FROM_META['projector.2.weight'] = 'projector.2.weight'  # UPDATED
-            _FROM_META['projector.2.bias'] = 'projector.2.bias'  # UPDATED
         if self._quantization_mode is None:
             ckpt_dict = checkpointer.load_checkpoint()
         else:
@@ -67,22 +57,28 @@ class InferenceRecipe:
         self._model = self._setup_model(
             model_cfg=cfg.model,
             model_state_dict=ckpt_dict[utils.MODEL_KEY],
-            cfg=cfg,  # UPDATED
         )
+        if 'biomedclip' in cfg.get('vision', ''):  # UPDATED
+            with utils.set_default_dtype(self._dtype), self._device:  # UPDATED
+                import open_clip  # UPDATED
+                visual = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224', device=self._device)[0].visual  # UPDATED
+                projector = nn.Sequential(nn.Linear(512, 4096), nn.GELU(), nn.Linear(4096, 4096 * 32), )  # UPDATED
+                state_dict = torch.load(cfg.vision_checkpoint)  # load vision_checkpoint # UPDATED
+                visual.load_state_dict(state_dict['visual'])  # UPDATED
+                projector.load_state_dict(state_dict['projector'])  # UPDATED
+                self._model.visual = visual  # UPDATED
+                self._model.projector = projector  # UPDATED
+        else:  # UPDATED
+            raise ValueError('Invalid vision:', cfg.get('vision', ''))  # UPDATED
         self._tokenizer = config.instantiate(cfg.tokenizer)
 
     def _setup_model(
         self,
         model_cfg: DictConfig,
         model_state_dict: Dict[str, Any],
-        cfg  # UPDATED
     ) -> nn.Module:
         with utils.set_default_dtype(self._dtype), self._device:
             model = config.instantiate(model_cfg)
-            if 'biomedclip' in cfg.get('vision', ''):  # Before the state_dict is loaded  # UPDATED
-                import open_clip  # UPDATED
-                model.visual = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224', device=self._device)[0].visual  # UPDATED
-                model.projector = nn.Sequential(nn.Linear(512, 4096), nn.GELU(), nn.Linear(4096, 4096 * 32), )  # UPDATED
 
         if self._quantization_mode is not None:
             model = self._quantizer.quantize(model)
@@ -151,37 +147,29 @@ def main(cfg: DictConfig) -> None:
     recipe.setup(cfg=cfg)
     ##################
     # UPDATED
-    ckp_name = cfg.checkpointer.checkpoint_files[0].split(".")[0]
+    ckp_name = os.path.basename(cfg.vision_checkpoint).split(".")[0]
     if cfg.get('test_metrics', False):
         text_metrics, out_dict = test_metrics(recipe, cfg)
         pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'test_out_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
         with open(os.path.join(cfg.output_dir, f'test_{ckp_name}.csv'), 'wt') as f:
-            for k, v in text_metrics.items():
-                f.write(f"{k},{np.mean(v)}\n")
-    if cfg.get('test_vqarad', False):
-        vqa_out_path = os.path.join(cfg.output_dir, f'test_out_vqarad_{ckp_name}.csv')
-        if os.path.isfile(vqa_out_path):
-            out_dict = pd.read_csv(vqa_out_path)
-        else:
-            out_dict = test_vqarad(recipe, cfg)
-            pd.DataFrame(out_dict).to_csv(vqa_out_path, index=False, encoding='utf-8-sig')
-        # evaluate vqa
-        correct_list, out_dict = eval_vqa(recipe, cfg, out_dict)
-        pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'acc_out_vqarad_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
-        with open(os.path.join(cfg.output_dir, f'acc_vqarad_{ckp_name}.csv'), 'wt') as f:
-            f.write(f"{np.mean(correct_list)}\n")
+            for metric, score in text_metrics:
+                f.write(f'{metric},{score:.6f}\n')
     if cfg.get('test_vqaslake', False):
-        vqa_out_path = os.path.join(cfg.output_dir, f'test_out_vqaslake_{ckp_name}.csv')
-        if os.path.isfile(vqa_out_path):
-            out_dict = pd.read_csv(vqa_out_path)
-        else:
-            out_dict = test_vqaslake(recipe, cfg)
-            pd.DataFrame(out_dict).to_csv(vqa_out_path, index=False, encoding='utf-8-sig')
-        # evaluate vqa
-        correct_list, out_dict = eval_vqa(recipe, cfg, out_dict)
-        pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'acc_out_vqaslake_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
-        with open(os.path.join(cfg.output_dir, f'acc_vqaslake_{ckp_name}.csv'), 'wt') as f:
-            f.write(f"{np.mean(correct_list)}\n")
+        out_dict = test_vqaslake(recipe, cfg)
+        pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'test_out_vqaslake_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
+        if cfg.get('eval_vqa', False):
+            correct_list, out_dict = eval_vqa(recipe, cfg, out_dict)
+            pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'acc_out_vqaslake_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
+            with open(os.path.join(cfg.output_dir, f'acc_vqaslake_{ckp_name}.csv'), 'wt') as f:
+                f.write(f"{np.mean(correct_list)}\n")
+    if cfg.get('test_vqarad', False):
+        out_dict = test_vqarad(recipe, cfg)
+        pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'test_out_vqarad_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
+        if cfg.get('eval_vqa', False):
+            correct_list, out_dict = eval_vqa(recipe, cfg, out_dict)
+            pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'acc_out_vqarad_{ckp_name}.csv'), index=False, encoding='utf-8-sig')
+            with open(os.path.join(cfg.output_dir, f'acc_vqarad_{ckp_name}.csv'), 'wt') as f:
+                f.write(f"{np.mean(correct_list)}\n")
     ##################
 
 

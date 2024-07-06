@@ -4,6 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+import os  # UPDATED
 import sys
 from functools import partial
 from typing import Any, Dict, Optional, Tuple
@@ -128,6 +129,7 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
         self.total_epochs = cfg.epochs
         self.max_steps_per_epoch = cfg.max_steps_per_epoch
         self.total_training_steps = 0
+        self.cfg = cfg  # UPDATED
 
     def load_checkpoint(self, cfg_checkpointer: DictConfig) -> Dict[str, Any]:
         """
@@ -192,24 +194,28 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
             compile_model=self._model_compile,
             model_state_dict=ckpt_dict[utils.MODEL_KEY],
         )
-        with utils.set_default_dtype(self._dtype), self._device:  # UPDATED
-            from torchtune.models.convert_weights import _FROM_META  # UPDATED
-            if 'biomedclip' in cfg.get('vision', ''):  # UPDATED
+        if 'biomedclip' in cfg.get('vision', ''):  # UPDATED
+            with utils.set_default_dtype(self._dtype), self._device:  # UPDATED
                 import open_clip  # UPDATED
-                self._model.visual = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224', device=self._device)[0].visual  # UPDATED
-                for k, _ in self._model.visual.named_parameters():  # UPDATED
-                    _FROM_META[f'visual.{k}'] = f'visual.{k}'  # UPDATED
-                self._model.projector = nn.Sequential(nn.Linear(512, 4096), nn.GELU(), nn.Linear(4096, 4096 * 32), )  # UPDATED
-                for k, _ in self._model.projector.named_parameters():  # UPDATED
-                    _FROM_META[f'projector.{k}'] = f'projector.{k}'  # UPDATED
+                visual = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224', device=self._device)[0].visual  # UPDATED
+                projector = nn.Sequential(nn.Linear(512, 4096), nn.GELU(), nn.Linear(4096, 4096 * 32), )  # UPDATED
+                if cfg.get('vision_checkpoint', None) is not None:  # UPDATED
+                    print(f'{cfg.vision_checkpoint} is loaded.')  # UPDATED
+                    state_dict = torch.load(cfg.vision_checkpoint)  # load vision_checkpoint # UPDATED
+                    visual.load_state_dict(state_dict['visual'])  # UPDATED
+                    projector.load_state_dict(state_dict['projector'])  # UPDATED
+                self._model.visual = visual  # UPDATED
+                self._model.projector = projector  # UPDATED
+        else:  # UPDATED
+            raise ValueError('Invalid vision:', cfg.get('vision', ''))  # UPDATED
         self._tokenizer = config.instantiate(cfg.tokenizer)
         log.info("Tokenizer is initialized from file.")
 
         # _setup_optimizer should take in ckpt_dict only if training is resumed from
         # checkpoint. Transforming the opt state dict is handled by this method
-        if cfg.get('trainonly', False):  # UPDATED
-            for n, p in self._model.named_parameters():  # UPDATED
-                p.requires_grad_(('visual' in n) or ('projector' in n))  # UPDATED
+        for n, p in self._model.named_parameters():  # UPDATED
+            p.requires_grad_(('visual' in n) or ('projector' in n))  # UPDATED
+        print('trainable params:', [n for n, p in self._model.named_parameters() if p.requires_grad])  # UPDATED
         self._optimizer = self._setup_optimizer(
             cfg_optimizer=cfg.optimizer,
             optimizer_in_bwd=cfg.optimizer_in_bwd,
@@ -468,7 +474,9 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
                         memory_stats, step=self.total_training_steps
                     )
             self.epochs_run += 1
-            self.save_checkpoint(epoch=curr_epoch)
+            # self.save_checkpoint(epoch=curr_epoch)  # UPDATED
+            os.makedirs(self.cfg.checkpointer.output_dir, exist_ok=True)  # UPDATED
+            torch.save({'visual': self._model.visual.state_dict(), 'projector': self._model.projector.state_dict()}, os.path.join(self.cfg.checkpointer.output_dir, f'meta_model_{curr_epoch}.pt'))  # UPDATED
 
     def cleanup(self) -> None:
         self._metric_logger.close()
