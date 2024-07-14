@@ -22,14 +22,6 @@ However, even with this fine-tuning, the models still struggle with out-of-scope
 - Poor responses to **unexpected** questions.
 - **Overfitting** to the training chat format (e.g., weak performance in visual question-answering tasks when fine-tuned with image-caption pairs).
 
-These weaknesses arise from several factors:
-- **Limited Samples:** In-house datasets may have an insufficient number of samples, limiting the model's ability to generalize effectively.
-- **Insufficient Information:** The training samples might lack the necessary breadth and depth, hindering the model's training.
-- **Limited Representation:** Even though the vision encoder is trained on a diverse dataset, substantial domain gaps in the in-house data limit its ability to extract informative features.
-This limitation is exacerbated when the typical fine-tuning method keeps the vision encoder frozen.
-
-While **Limited Samples** and **Insufficient Information** are inherent challenges of the in-house data that may be difficult to overcome, our focus is on addressing **Limited Representation**.
-
 **Design Principle.**
 This repository is designed to develop image captioning and visual question answering with minimal effort.
 To achieve this, we have made minimal modifications to the original torchtune codebase, ensuring easy tracking of changes.
