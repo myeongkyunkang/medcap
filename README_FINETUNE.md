@@ -8,7 +8,7 @@ Download the datasets to your local machine and then run the following.
 - Download the [LLaVA-Med-60K-IM-text](https://huggingface.co/datasets/myeongkyunkang/LLaVA-Med-60K-IM-text) dataset to your local machine and then run "unzip images.zip -d images_med60k" and "mv train_text.json train_text_med60k.json" in advance.
 - Download the [PubMedVision](https://huggingface.co/datasets/FreedomIntelligence/PubMedVision) (images_*.zip and PubMedVision_Alignment_VQA.json) dataset to your local machine and then run "for ((i=0; i<20; i++)) do unzip -j images_$i.zip -d images_vision/ & done" in advance.
 - Download the [PMC-OA](https://huggingface.co/datasets/axiong/pmc_oa) dataset to your local machine and then run the following.
-- Download [PMC-Patients](https://huggingface.co/datasets/zhengyun21/PMC-Patients) (PMC-Patients.csv) and [PMC-Patients-images]() datasets to your local machine and then run "unzip images.zip -d images_patients" in advance.
+- Download [PMC-Patients](https://huggingface.co/datasets/zhengyun21/PMC-Patients) (PMC-Patients.csv) and [PMC-Patients-images](https://huggingface.co/datasets/myeongkyunkang/PMC-Patients-images) datasets to your local machine and then run "unzip images.zip -d images_patients" in advance.
 ```
 python tools/convert_to_sharegpt.py --dataset textplus
 ```
