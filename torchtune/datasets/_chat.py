@@ -20,9 +20,11 @@ from torchtune.data import (
 )
 from torchtune.modules.tokenizers import Tokenizer
 
+import json  # UPDATED
 import os  # UPDATED
-from PIL import Image  # UPDATED
+from copy import deepcopy  # UPDATED
 import open_clip  # UPDATED
+from PIL import Image  # UPDATED
 
 class ChatDataset(Dataset):
     """
@@ -71,12 +73,16 @@ class ChatDataset(Dataset):
         **load_dataset_kwargs: Dict[str, Any],
     ) -> None:
         self._tokenizer = tokenizer
-        self._data = load_dataset('json', data_files=source, split='train', **load_dataset_kwargs)  # UPDATED
+        with open(source, 'r', encoding='utf-8') as f:  # UPDATED
+            self._data = json.loads(f.read())  # UPDATED
         self._convert_to_messages = convert_to_messages
         self.chat_format = chat_format
         self.max_seq_len = max_seq_len
         self.train_on_input = train_on_input
         self.preprocess = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224')[2]  # use testing preprocess # UPDATED
+        self.preprocess_224 = deepcopy(self.preprocess)  # UPDATED
+        del self.preprocess_224.transforms[0]  # remove Resize(size=224, interpolation=bicubic, max_size=None, antialias=True) # UPDATED
+        del self.preprocess_224.transforms[0]  # remove CenterCrop(size=(224, 224)) # UPDATED
 
     def __len__(self):
         return len(self._data)
@@ -103,7 +109,8 @@ class ChatDataset(Dataset):
         feat = None  # UPDATED
         if meta != '':  # UPDATED
             meta_dict = dict(m.split('=') for m in meta.split(';'))  # UPDATED
-            feat = self.preprocess(Image.open(os.path.join(meta_dict['dir'], f"{image}")).convert('RGB'))  # UPDATED
+            img = Image.open(os.path.join(meta_dict['dir'], f"{image}"))  # UPDATED
+            feat = self.preprocess_224(img) if (img.size[0] == 224 and img.size[1] == 224) else self.preprocess(img)  # UPDATED
         return tokens, labels, feat  # UPDATED
 
 

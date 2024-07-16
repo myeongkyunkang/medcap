@@ -49,4 +49,23 @@ INSTRUCTION_LIST = [
     "Can you provide a description of this medical scan?",
     "Please caption this medical scan.",
     "Can you provide a report summary for this medical scan?",
+
+    "Please describe this picture.",
+    "Can you describe the image for me?",
+    "What details stand out in this image?",
+    "Could you provide a detailed description of what is shown in the picture?",
+    "What is the main focus of this photograph?",
+    "Describe the composition and the subjects in this picture.",
+    "Explain the visual content of the image.",
+    "Analyze the image in a comprehensive and detailed manner.",
+    "Write a detailed description of the given image.",
+    "What is this photo about?",
+    "What is depicted in the image?",
+]
+
+INSTRUCTION_CASE_LIST = [
+    "Can you provide a case report?",
+    "Please write a case report.",
+    "Please generate a case report.",
+    "Can you provide a case summary?",
 ]

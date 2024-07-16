@@ -1,27 +1,12 @@
-import os
-
+import argparse
 import open_clip
-from PIL import Image
+import os
+from PIL import Image, ImageOps
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
 
-def read_images(image_dir):
-    image_list = []
-    for (path, dir, files) in os.walk(image_dir):
-        for filename in files:
-            ext_lower = os.path.splitext(filename)[-1].lower()
-            if ext_lower == '.png' or ext_lower == '.jpg' or ext_lower == '.jpeg' or ext_lower == '.bmp' or ext_lower == '.tif':
-                image_list.append(os.path.join(path, filename))
-    return image_list
-
-
-if __name__ == '__main__':
-    print('Preprocess ROCOv2-VQARAD-SLAKE-text images.')
-
-    input_dir = './datasets/ROCOv2-VQARAD-SLAKE-text/images'
-    result_dir = f'./datasets/ROCOv2-VQARAD-SLAKE-text/images_preprocess'
-
+def preprocess_images(input_dir, result_dir):
     # make result directory
     os.makedirs(result_dir, exist_ok=True)
 
@@ -32,16 +17,32 @@ if __name__ == '__main__':
     del preprocess.transforms[-1]  # remove _convert_to_rgb
 
     # read images
-    image_list = read_images(input_dir)
-
+    image_list = [os.path.join(input_dir, filename) for filename in os.listdir(input_dir) if filename.endswith(('.jpg', '.png'))]  # faster reading
+    if len(image_list) == 0:
+        image_list = [os.path.join(dir, filename)
+                      for dir, _, filenames in os.walk(input_dir)
+                      for filename in filenames
+                      if filename.endswith(('.jpg', '.png'))]
 
     def run(image_path):
         img = Image.open(image_path).convert('RGB')
+        max_dim, min_dim = max(img.size), min(img.size)
+        if (max_dim / min_dim) > 1.8:
+            padding = [(max_dim - dim) // 2 for dim in img.size]
+            img = ImageOps.expand(img, border=(padding[0], padding[1], max_dim - img.size[0] - padding[0], max_dim - img.size[1] - padding[1]))
         img = preprocess(img)
         os.makedirs(os.path.dirname(image_path.replace(input_dir, result_dir)), exist_ok=True)
         img.save(image_path.replace(input_dir, result_dir))
 
-
     Parallel(n_jobs=48)(
         delayed(run)(i) for i in tqdm(image_list)
     )
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input_dir', default='./datasets/PMC-VQA-text/images')
+    parser.add_argument('--result_dir', default='./datasets/PMC-VQA-text/images_preprocess')
+    args = parser.parse_args()
+
+    preprocess_images(args.input_dir, args.result_dir)

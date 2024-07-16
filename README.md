@@ -38,113 +38,68 @@ Update torchtune/utils/_generation.py
 Update torchtune/utils/collate.py 
 ```
 
-## Get started
+## Preparations
 
 Follow the instructions on the official [`Meta-Llama-3-8B-Instruct`](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct) repository to ensure you have access to the official Llama model weights.
 Once you have confirmed access, download the weights to your local machine.
-Additionally, download the vision encoder [`medcap-rocov2-vqarad-slake`](https://huggingface.co/myeongkyunkang/medcap-rocov2-vqarad-slake) to your local machine.
+Afterward, download the vision encoder [`medcap-textplus`]() to your local machine.
 
-Next, download the [SLAKE](https://www.med-vqa.com/slake/) and [SLAKE-text](https://huggingface.co/datasets/myeongkyunkang/SLAKE-text) dataset to your local machine and then run the following.
+## SLAKE evaluation
 
-```
-# preprocess SLAKE
-python tools/convert_slake_text_to_sharegpt.py
-```
+### Running a test script for SLAKE
 
-### Running a fine-tuning recipe
+Download the [SLAKE](https://www.med-vqa.com/slake/) dataset to your local machine.
 
 ```
 python
 import os
 GPU=0
-name='slake'
+name='textplus'
 vision='biomedclip'
-epochs=10
 data_dir='./datasets/medcap'
 llama_dir='./models/llama3/Meta-Llama-3-8B-Instruct'
-pretrained_medcap='./models/medcap-rocov2-vqarad-slake/last.pt'
 result_dir='./results_medcap'
 postfix_result=''
-cmd=f"PYTHONPATH=./ CUDA_VISIBLE_DEVICES={GPU} python torchtune/_cli/tune.py run full_finetune_single_device --config llama3/8B_full_single_device \
+epoch=4
+cmd=f"PYTHONPATH=./ CUDA_VISIBLE_DEVICES={GPU} python torchtune/_cli/tune.py run recipes/generate.py --config recipes/configs/custom_generation_config.yaml \
+    test_slake=True \
     seed=1 \
-    epochs={epochs} \
-    batch_size=16 \
-    gradient_accumulation_steps=1 \
+    max_new_tokens=200 \
+    top_k=null \
+    temperature=0 \
     vision={vision} \
-    dataset._component_=torchtune.datasets.chat_dataset \
-    dataset.source={data_dir}/{name}_train.json \
-    dataset.conversation_style=sharegpt \
-    dataset.chat_format=ChatFormat \
-    dataset.max_seq_len=400 \
+    dataset_source=./datasets/SLAKE \
+    dataset_conversation_style=sharegpt \
+    dataset_chat_format=ChatFormat \
+    dataset_max_seq_len=200 \
     tokenizer.path={llama_dir}/tokenizer.model \
     checkpointer.checkpoint_dir={llama_dir} \
-    vision_checkpoint={pretrained_medcap} \
-    checkpointer.output_dir={result_dir}/{name}_{vision}{postfix_result}/checkpoint \
-    metric_logger.log_dir={result_dir}/{name}_{vision}{postfix_result}/log \
+    vision_checkpoint={result_dir}/{name}_{vision}{postfix_result}/checkpoint/meta_model_{epoch}.pt \
     output_dir={result_dir}/{name}_{vision}{postfix_result}"
 print(cmd)
 os.system(cmd)
 ```
 
-### Running a test script
+### Running VQA evaluation using Meta-Llama-3-70B-Instruct
 
 ```
 python
 import os
-GPU=0
-name='slake'
+name='textplus'
+vqa_name='slake'
 vision='biomedclip'
-epochs=10
-data_dir='./datasets/medcap'
-llama_dir='./models/llama3/Meta-Llama-3-8B-Instruct'
+llama_dir='./models/llama3/Meta-Llama-3-70B-Instruct'
 result_dir='./results_medcap'
 postfix_result=''
-for epoch in range(epochs):
-    cmd=f"PYTHONPATH=./ CUDA_VISIBLE_DEVICES={GPU} python torchtune/_cli/tune.py run recipes/generate.py --config recipes/configs/custom_generation_config.yaml \
-        test_metrics=True \
-        seed=1 \
-        max_new_tokens=200 \
-        top_k=null \
-        temperature=0 \
-        vision={vision} \
-        dataset_source={data_dir}/{name}_val.json \
-        dataset_conversation_style=sharegpt \
-        dataset_chat_format=ChatFormat \
-        dataset_max_seq_len=200 \
-        tokenizer.path={llama_dir}/tokenizer.model \
-        checkpointer.checkpoint_dir={llama_dir} \
-        vision_checkpoint={result_dir}/{name}_{vision}{postfix_result}/checkpoint/meta_model_{epoch}.pt \
-        output_dir={result_dir}/{name}_{vision}{postfix_result}"
-    print(cmd)
-    os.system(cmd)
-```
-
-### Modify configs for SLAKE VQA
-
-```
-# Modify the configs in the test script
-test_slake=True
-dataset_source=./datasets/SLAKE
-```
-
-### Use Meta-Llama-3-70B-Instruct for SLAKE VQA
-
-```
-python
-import os
-epochs=10
-name='slake'
-vision='biomedclip'
-postfix_result=''
-for epoch in range(epochs):
-    cmd=f"torchrun --nproc_per_node 8 chat_llama3.py \
-        --ckpt_dir ./models/llama3/Meta-Llama-3-70B-Instruct \
-        --tokenizer_path ./models/llama3/Meta-Llama-3-70B-Instruct/tokenizer.model \
-        --temperature 0 --max_seq_len 200 --max_batch_size 8 \
-        --exp eval_vqa \
-        --csv_path ./results_medcap/{name}_{vision}{postfix_result}/test_out_{name}_meta_model_{epoch}.csv"
-    print(cmd)
-    os.system(cmd)
+epoch=4
+cmd=f"torchrun --nproc_per_node 8 chat_llama3.py \
+    --ckpt_dir {llama_dir} \
+    --tokenizer_path {llama_dir}/tokenizer.model \
+    --temperature 0 --max_seq_len 200 --max_batch_size 8 \
+    --exp eval_vqa \
+    --csv_path {result_dir}/{name}_{vision}{postfix_result}/test_out_{vqa_name}_meta_model_{epoch}.csv"
+print(cmd)
+os.system(cmd)
 ```
 
 ### Modify configs for VQA-RAD
@@ -154,9 +109,13 @@ test_vqarad=True
 dataset_source=./datasets/VQA_RAD
 ```
 
-### Other fine-tuning recipes
+## Fine-tuning recipes
 
 Please refer to [README_FINETUNE.md](README_FINETUNE.md)
+
+## Tutorials
+
+Please refer to [README_TUTORIAL.md](README_TUTORIAL.md)
 
 ## Pretrained models
 
@@ -165,9 +124,7 @@ Coming soon.
 <table><tbody>
 <tr><td><a href="https://huggingface.co/datasets/axiong/pmc_oa">PMC-OA</a></td>
 <td><a href="https://huggingface.co/myeongkyunkang/medcap-pmcoa">download</a></td></tr>
-<tr><td><a href="https://huggingface.co/datasets/myeongkyunkang/ROCOv2-VQARAD-SLAKE-text">ROCOv2-VQARAD-SLAKE-text</a></td>
-<td><a href="https://huggingface.co/myeongkyunkang/medcap-rocov2-vqarad-slake">download</a></td></tr>
-<tr><td><a href="https://huggingface.co/datasets/myeongkyunkang/SLAKE-text">SLAKE-text</a></td>
+<tr><td>*-text+ datasets</td>
 <td><a href="">download</a></td></tr>
 </tbody></table>
 

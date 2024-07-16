@@ -361,6 +361,7 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
                 padding_idx=self._tokenizer.pad_id,
                 ignore_idx=self._loss_fn.ignore_index,
             ),
+            num_workers=8,  # UPDATED
         )
 
         log.info("Dataset and Sampler are initialized.")
