@@ -9,10 +9,10 @@ from llama import Dialog, Llama
 def main(
         ckpt_dir: str,
         tokenizer_path: str,
-        temperature: float = 0.6,
+        temperature: float = 0.0,
         top_p: float = 0.9,
-        max_seq_len: int = 512,
-        max_batch_size: int = 4,
+        max_seq_len: int = 200,
+        max_batch_size: int = 8,
         max_gen_len: Optional[int] = None,
         exp='chat',
         csv_path=None,

@@ -192,7 +192,7 @@ class TransformerDecoder(nn.Module):
             if hasattr(self, "visual"):  # UPDATED
                 feat = self.visual(feat)  # UPDATED
                 feat = self.projector(feat)  # UPDATED
-                feat = feat.reshape(bsz, -1, 4096)  # -1 is the number of tokens. # UPDATED
+            feat = feat.reshape(bsz, -1, 4096)  # -1 is the number of tokens. # UPDATED
             h[tokens == 118075] = feat.reshape(-1, feat.shape[-1])  # ①(=118075) # UPDATED
 
         mask = None

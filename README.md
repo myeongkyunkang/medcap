@@ -40,9 +40,9 @@ Update torchtune/utils/collate.py
 
 ## Preparations
 
-Follow the instructions on the official [`Meta-Llama-3-8B-Instruct`](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct) repository to ensure you have access to the official Llama model weights.
+Follow the instructions on the official [Meta-Llama-3-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct) repository to ensure you have access to the official Llama model weights.
 Once you have confirmed access, download the weights to your local machine.
-Afterward, download the vision encoder [`medcap-textplus`]() to your local machine.
+Afterward, download the vision encoder [medcap-textplus-pmcoa-patients-llama3](https://huggingface.co/myeongkyunkang/medcap-textplus-pmcoa-patients-llama3) to your local machine.
 
 ## SLAKE evaluation
 
@@ -56,28 +56,32 @@ import os
 GPU=0
 name='textplus'
 vision='biomedclip'
+epochs=5
 data_dir='./datasets/medcap'
 llama_dir='./models/llama3/Meta-Llama-3-8B-Instruct'
 result_dir='./results_medcap'
 postfix_result=''
-epoch=4
-cmd=f"PYTHONPATH=./ CUDA_VISIBLE_DEVICES={GPU} python torchtune/_cli/tune.py run recipes/generate.py --config recipes/configs/custom_generation_config.yaml \
-    test_slake=True \
-    seed=1 \
-    max_new_tokens=200 \
-    top_k=null \
-    temperature=0 \
-    vision={vision} \
-    dataset_source=./datasets/SLAKE \
-    dataset_conversation_style=sharegpt \
-    dataset_chat_format=ChatFormat \
-    dataset_max_seq_len=200 \
-    tokenizer.path={llama_dir}/tokenizer.model \
-    checkpointer.checkpoint_dir={llama_dir} \
-    vision_checkpoint={result_dir}/{name}_{vision}{postfix_result}/checkpoint/meta_model_{epoch}.pt \
-    output_dir={result_dir}/{name}_{vision}{postfix_result}"
-print(cmd)
-os.system(cmd)
+test_list = ['test_slake', 'test_vqarad']
+test_dataset_source_list = ['SLAKE', 'VQA_RAD']
+for test, test_dataset_source in zip(test_list, test_dataset_source_list):
+    for epoch in range(epochs):
+        cmd=f"PYTHONPATH=./ CUDA_VISIBLE_DEVICES={GPU} python torchtune/_cli/tune.py run recipes/generate.py --config recipes/configs/custom_generation_config.yaml \
+            {test}=True \
+            seed=1 \
+            max_new_tokens=200 \
+            top_k=null \
+            temperature=0 \
+            vision={vision} \
+            dataset_source=./datasets/{test_dataset_source} \
+            dataset_conversation_style=sharegpt \
+            dataset_chat_format=ChatFormat \
+            dataset_max_seq_len=200 \
+            tokenizer.path={llama_dir}/tokenizer.model \
+            checkpointer.checkpoint_dir={llama_dir} \
+            vision_checkpoint={result_dir}/{name}_{vision}{postfix_result}/checkpoint/meta_model_{epoch}.pt \
+            output_dir={result_dir}/{name}_{vision}{postfix_result}"
+        print(cmd)
+        os.system(cmd)
 ```
 
 ### Running VQA evaluation using Meta-Llama-3-70B-Instruct
@@ -85,28 +89,36 @@ os.system(cmd)
 ```
 python
 import os
+GPU='0'
+bit=4
 name='textplus'
-vqa_name='slake'
 vision='biomedclip'
-llama_dir='./models/llama3/Meta-Llama-3-70B-Instruct'
+epochs=5
+llama_dir='./models/llama3/Meta-Llama-3-70B-Instruct-hf'
 result_dir='./results_medcap'
 postfix_result=''
-epoch=4
+vqa_name_list = ['slake', 'vqarad']
+for vqa_name in vqa_name_list:
+    for epoch in range(epochs):
+        cmd=f"python chat_llama3_quant.py \
+            --gpu {GPU} \
+            --bit {bit} \
+            --ckpt_dir {llama_dir} \
+            --exp eval_vqa \
+            --csv_path {result_dir}/{name}_{vision}{postfix_result}/test_out_{vqa_name}_meta_model_{epoch}.csv"
+        print(cmd)
+        os.system(cmd)
+```
+
+### Modify the command to run without quantization
+
+```
+llama_dir='./models/llama3/Meta-Llama-3-70B-Instruct'
 cmd=f"torchrun --nproc_per_node 8 chat_llama3.py \
     --ckpt_dir {llama_dir} \
     --tokenizer_path {llama_dir}/tokenizer.model \
-    --temperature 0 --max_seq_len 200 --max_batch_size 8 \
     --exp eval_vqa \
     --csv_path {result_dir}/{name}_{vision}{postfix_result}/test_out_{vqa_name}_meta_model_{epoch}.csv"
-print(cmd)
-os.system(cmd)
-```
-
-### Modify configs for VQA-RAD
-
-```
-test_vqarad=True
-dataset_source=./datasets/VQA_RAD
 ```
 
 ## Fine-tuning recipes
@@ -119,13 +131,9 @@ Please refer to [README_TUTORIAL.md](README_TUTORIAL.md)
 
 ## Pretrained models
 
-Coming soon.
-
 <table><tbody>
-<tr><td><a href="https://huggingface.co/datasets/axiong/pmc_oa">PMC-OA</a></td>
-<td><a href="https://huggingface.co/myeongkyunkang/medcap-pmcoa">download</a></td></tr>
 <tr><td>*-text+ datasets</td>
-<td><a href="">download</a></td></tr>
+<td><a href="https://huggingface.co/myeongkyunkang/medcap-textplus-pmcoa-patients-llama3">download</a></td></tr>
 </tbody></table>
 
 Evaluated on the following datasets:
@@ -151,6 +159,7 @@ pip install open_clip_torch==2.24.0 transformers
 
 # Use 70B for VQA evaluation
 pip install git+https://github.com/meta-llama/llama3@f2bb4c5b1d1a11152740267e0827eb087d7fef64
+pip install accelerate
 ```
 
 ## Citation

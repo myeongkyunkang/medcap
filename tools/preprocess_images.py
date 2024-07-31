@@ -1,6 +1,7 @@
 import argparse
-import open_clip
 import os
+
+import open_clip
 from PIL import Image, ImageOps
 from joblib import Parallel, delayed
 from tqdm import tqdm
@@ -25,14 +26,17 @@ def preprocess_images(input_dir, result_dir):
                       if filename.endswith(('.jpg', '.png'))]
 
     def run(image_path):
-        img = Image.open(image_path).convert('RGB')
-        max_dim, min_dim = max(img.size), min(img.size)
-        if (max_dim / min_dim) > 1.8:
-            padding = [(max_dim - dim) // 2 for dim in img.size]
-            img = ImageOps.expand(img, border=(padding[0], padding[1], max_dim - img.size[0] - padding[0], max_dim - img.size[1] - padding[1]))
-        img = preprocess(img)
-        os.makedirs(os.path.dirname(image_path.replace(input_dir, result_dir)), exist_ok=True)
-        img.save(image_path.replace(input_dir, result_dir))
+        try:
+            img = Image.open(image_path).convert('RGB')
+            max_dim, min_dim = max(img.size), min(img.size)
+            if (max_dim / min_dim) > 1.8:
+                padding = [(max_dim - dim) // 2 for dim in img.size]
+                img = ImageOps.expand(img, border=(padding[0], padding[1], max_dim - img.size[0] - padding[0], max_dim - img.size[1] - padding[1]))
+            img = preprocess(img)
+            os.makedirs(os.path.dirname(image_path.replace(input_dir, result_dir)), exist_ok=True)
+            img.save(image_path.replace(input_dir, result_dir))
+        except:
+            print('Skip:', image_path)
 
     Parallel(n_jobs=48)(
         delayed(run)(i) for i in tqdm(image_list)

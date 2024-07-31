@@ -2,8 +2,6 @@ import datetime
 import json
 import os
 from copy import deepcopy
-
-import numpy as np
 from pycocoevalcap.bleu.bleu import Bleu
 from pycocoevalcap.cider.cider import Cider
 from pycocoevalcap.eval import COCOEvalCap
@@ -130,7 +128,7 @@ def chat(question, sample, recipe, cfg, ds):
     return generated_text, cfg.prompt
 
 
-def vqa(question, filename, image_dir, sample, recipe, cfg, ds, instruction_describe='Describe the image in a detailed and informative manner.'):
+def vqa(question, filename, image_dir, sample, recipe, cfg, ds, instruction_describe=''):
     ori_max_new_tokens = cfg.max_new_tokens  # save max_new_tokens
     cfg.max_new_tokens = cfg.max_new_tokens // 2  # reduce max_new_tokens by half
 
@@ -140,7 +138,7 @@ def vqa(question, filename, image_dir, sample, recipe, cfg, ds, instruction_desc
     _sample['meta'] = f'dir={image_dir}'
 
     # make prompt
-    _sample['conversations'][0]['value'] = MRI_TOKENS + f'\n\n{instruction_describe}'
+    _sample['conversations'][0]['value'] = MRI_TOKENS + (f'\n\n{instruction_describe}' if instruction_describe != '' else '')
     _sample['conversations'][1]['value'] = ''  # remove answer
     tokens, _, feat = ds._prepare_sample(_sample)
     cfg.prompt = ds._tokenizer.decode(tokens)
@@ -176,52 +174,6 @@ def vqa(question, filename, image_dir, sample, recipe, cfg, ds, instruction_desc
     return generated_text, cfg.prompt
 
 
-def eval_vqa(recipe, cfg, answer_dict):
-    cfg.max_new_tokens = 20  # force to reduce max_new_tokens
-
-    # read dummy dataset
-    ds = chat_dataset(
-        tokenizer=recipe._tokenizer,
-        source='recipes/configs/dummy.json',
-        conversation_style=cfg.dataset_conversation_style,
-        chat_format=cfg.dataset_chat_format,
-        max_seq_len=cfg.dataset_max_seq_len,
-        train_on_input=True,
-    )
-    sample_0 = deepcopy(ds._data[0])
-
-    correct_list = []
-    out_dict = {'image': [], 'instruction': [], 'generated': []}
-    for image, inst, out, gen in zip(answer_dict['image'], answer_dict['instruction'], answer_dict['output'], answer_dict['generated']):
-        vqa_question = inst.split('<|eot_id|><|start_header_id|>user<|end_header_id|>')[-1].split('<|eot_id|><|start_header_id|>assistant<|end_header_id|>')[0].strip()
-        question = f"Respond with only RIGHT or WRONG to indicate whether we predicted it correctly.\n\nQuestion: {vqa_question}\nOur answer: {gen}\nCorrect answer: {out}"
-        generated_text, prompt = chat(question, sample_0, recipe, cfg, ds)
-
-        print('=' * 20)
-        print(image)
-        print(prompt)
-        print(generated_text)
-
-        generated_text_lower = generated_text.lower()
-        if 'right' in generated_text_lower and 'wrong' in generated_text_lower:
-            correct_list.append(0)  # Solved via 70B
-        elif 'right' in generated_text_lower:
-            correct_list.append(1)
-        elif 'wrong' in generated_text_lower:
-            correct_list.append(0)
-        else:
-            correct_list.append(0)  # Solved via 70B
-
-        out_dict['image'].append(image)
-        out_dict['instruction'].append(prompt)
-        out_dict['generated'].append(generated_text)
-
-    correct_list = np.array(correct_list)
-    print(f' * Acc: {np.mean(correct_list)}')
-
-    return correct_list, out_dict
-
-
 def test_slake(recipe, cfg):
     json_path = os.path.join(cfg.dataset_source, 'test.json')
     image_dir = os.path.join(cfg.dataset_source, 'imgs')
@@ -248,7 +200,8 @@ def test_slake(recipe, cfg):
 
         generated_text, prompt = vqa(elem['question'],
                                      filename=elem['img_name'], image_dir=image_dir,
-                                     sample=sample_0, recipe=recipe, cfg=cfg, ds=ds)
+                                     sample=sample_0, recipe=recipe, cfg=cfg, ds=ds,
+                                     instruction_describe=cfg.get('instruction_describe', ''))
 
         print('=' * 20)
         print(elem['img_name'])
@@ -290,7 +243,8 @@ def test_vqarad(recipe, cfg):
 
         generated_text, prompt = vqa(elem['question'],
                                      filename=elem['image_name'], image_dir=image_dir,
-                                     sample=sample_0, recipe=recipe, cfg=cfg, ds=ds)
+                                     sample=sample_0, recipe=recipe, cfg=cfg, ds=ds,
+                                     instruction_describe=cfg.get('instruction_describe', ''))
 
         print('=' * 20)
         print(elem['image_name'])

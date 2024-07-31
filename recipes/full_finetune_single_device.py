@@ -23,6 +23,7 @@ from torchtune.recipe_interfaces import FTRecipeInterface
 from torchtune.utils import OptimizerInBackwardWrapper  # UPDATED
 
 from tqdm import tqdm
+from time import time  # UPDATED
 
 
 log = utils.get_logger("DEBUG")
@@ -129,7 +130,6 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
         self.total_epochs = cfg.epochs
         self.max_steps_per_epoch = cfg.max_steps_per_epoch
         self.total_training_steps = 0
-        self.cfg = cfg  # UPDATED
 
     def load_checkpoint(self, cfg_checkpointer: DictConfig) -> Dict[str, Any]:
         """
@@ -407,6 +407,7 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
         # zero out the gradients before starting training
         if not self._optimizer_in_bwd:
             self._optimizer.zero_grad()
+        t = time()  # UPDATED
         # self.epochs_run should be non-zero when we're resuming from a checkpoint
         for curr_epoch in range(self.epochs_run, self.total_epochs):
             # Update the sampler to ensure data is correctly shuffled across epochs
@@ -474,10 +475,14 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
                     self._metric_logger.log_dict(
                         memory_stats, step=self.total_training_steps
                     )
+                if (time() - t) > 86400:  # 24 hours # UPDATED
+                    os.makedirs(self._checkpointer._output_dir, exist_ok=True)  # UPDATED
+                    torch.save({'visual': self._model.visual.state_dict(), 'projector': self._model.projector.state_dict()}, os.path.join(self._checkpointer._output_dir, f'meta_model_last.pt'))  # UPDATED
+                    t = time()  # UPDATED
             self.epochs_run += 1
             # self.save_checkpoint(epoch=curr_epoch)  # UPDATED
-            os.makedirs(self.cfg.checkpointer.output_dir, exist_ok=True)  # UPDATED
-            torch.save({'visual': self._model.visual.state_dict(), 'projector': self._model.projector.state_dict()}, os.path.join(self.cfg.checkpointer.output_dir, f'meta_model_{curr_epoch}.pt'))  # UPDATED
+            os.makedirs(self._checkpointer._output_dir, exist_ok=True)  # UPDATED
+            torch.save({'visual': self._model.visual.state_dict(), 'projector': self._model.projector.state_dict()}, os.path.join(self._checkpointer._output_dir, f'meta_model_{curr_epoch}.pt'))  # UPDATED
 
     def cleanup(self) -> None:
         self._metric_logger.close()

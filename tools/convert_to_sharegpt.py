@@ -5,17 +5,25 @@ import random
 
 import pandas as pd
 
-from utils import *
+from utils import MRI_TOKENS, INSTRUCTION_LIST
 
 random.seed(0)
 
 
-def convert(data, image_key, image_dir, text_key='text', random_instruction=False, instruction_list=INSTRUCTION_LIST):
+def convert(data, image_key, image_dir, text_key='text', instruction_type='no', instruction_list=INSTRUCTION_LIST):
     out = []
     for elem in data:
+        if instruction_type == 'no':
+            value = MRI_TOKENS
+        elif instruction_type == 'random':
+            value = MRI_TOKENS + '\n\n' + random.choice(instruction_list)
+        elif instruction_type == 'fixed':
+            value = MRI_TOKENS + '\n\n' + random.choice(instruction_list[0])
+        else:
+            raise ValueError('Invalid instruction_type:', instruction_type)
         out.append({
             'conversations': [
-                {"from": "human", "value": MRI_TOKENS + '\n\n' + (random.choice(instruction_list) if random_instruction else instruction_list[0])},
+                {"from": "human", "value": value},
                 {"from": "gpt", "value": elem[text_key].replace('①', '(1)')}  # ① is our special token
             ],
             'image': elem[image_key],
@@ -43,7 +51,7 @@ def convert_pmcoa(pmcoa_dir, save_dir):
     train_data = read_jsonl(train_jsonl_path)
 
     with open(save_train_path, 'w') as json_file:
-        json.dump(convert(train_data, image_key='image', image_dir=image_dir, text_key='caption', random_instruction=True), json_file, indent=4)
+        json.dump(convert(train_data, image_key='image', image_dir=image_dir, text_key='caption'), json_file, indent=4)
 
 
 def convert_slake(slake_dir, save_dir):
@@ -65,7 +73,7 @@ def convert_slake(slake_dir, save_dir):
         test_data = json.loads(f.read())
 
     with open(save_train_path, 'w') as json_file:
-        json.dump(convert(train_data, image_key='img_name', image_dir=image_dir, random_instruction=True), json_file, indent=4)
+        json.dump(convert(train_data, image_key='img_name', image_dir=image_dir), json_file, indent=4)
     with open(save_val_path, 'w') as json_file:
         json.dump(convert(val_data, image_key='img_name', image_dir=image_dir), json_file, indent=4)
     with open(save_test_path, 'w') as json_file:
@@ -87,12 +95,12 @@ def convert_vqarad(vqarad_dir, save_dir):
         test_data = json.loads(f.read())
 
     with open(save_train_path, 'w') as json_file:
-        json.dump(convert(train_data, image_key='image_name', image_dir=image_dir, random_instruction=True), json_file, indent=4)
+        json.dump(convert(train_data, image_key='image_name', image_dir=image_dir), json_file, indent=4)
     with open(save_test_path, 'w') as json_file:
         json.dump(convert(test_data, image_key='image_name', image_dir=image_dir), json_file, indent=4)
 
 
-def convert_textplus(pmcvqa_text_dir, save_dir, include_pmcoa_using_path='', include_patients_using_path=''):
+def convert_textplus(pmcvqa_text_dir, save_dir, include_pmcoa_using_path='', include_patients_using_path='', save_filename='textplus_train.json'):
     pmcvqa_image_dir = os.path.join(pmcvqa_text_dir, 'images')
     rocov2_image_dir = os.path.join(pmcvqa_text_dir, 'train')
     med60k_image_dir = os.path.join(pmcvqa_text_dir, 'images_med60k', 'images')
@@ -103,7 +111,7 @@ def convert_textplus(pmcvqa_text_dir, save_dir, include_pmcoa_using_path='', inc
     med60k_train_json_path = os.path.join(pmcvqa_text_dir, 'train_text_med60k.json')
     vision_train_json_path = os.path.join(pmcvqa_text_dir, 'PubMedVision_Alignment_VQA.json')
 
-    save_train_path = os.path.join(save_dir, 'textplus_train.json')
+    save_train_path = os.path.join(save_dir, save_filename)
 
     print('Reading PMC-VQA-text ...')
     with open(pmcvqa_train_json_path, 'r', encoding='utf-8') as f:
@@ -138,20 +146,41 @@ def convert_textplus(pmcvqa_text_dir, save_dir, include_pmcoa_using_path='', inc
             vision_train_data.append({'Figure_path': filename, 'text': vision_dict[filename]})
 
     converted_data = []
-    converted_data.extend(convert(pmcvqa_train_data, image_key='Figure_path', image_dir=pmcvqa_image_dir, random_instruction=True))
-    converted_data.extend(convert(rocov2_train_data, image_key='Figure_path', image_dir=rocov2_image_dir, random_instruction=True))
-    converted_data.extend(convert(med60k_train_data, image_key='image', image_dir=med60k_image_dir, random_instruction=True))
-    converted_data.extend(convert(vision_train_data, image_key='Figure_path', image_dir=vision_image_dir, random_instruction=True))
+    converted_data.extend(convert(pmcvqa_train_data, image_key='Figure_path', image_dir=pmcvqa_image_dir))
+    converted_data.extend(convert(rocov2_train_data, image_key='Figure_path', image_dir=rocov2_image_dir))
+    converted_data.extend(convert(med60k_train_data, image_key='image', image_dir=med60k_image_dir))
+    converted_data.extend(convert(vision_train_data, image_key='Figure_path', image_dir=vision_image_dir))
 
     print('Save json', len(converted_data), 'lines ...')
     with open(save_train_path, 'w') as json_file:
         json.dump(converted_data, json_file, indent=4)
 
+    medicat_image_dir = os.path.join(pmcvqa_text_dir, 'release', 'figures')
+    medicat_train_jsonl_path = os.path.join(pmcvqa_text_dir, 'release', 's2_full_figures_oa_nonroco_combined_medical_top4_public.jsonl')
+    if os.path.isfile(medicat_train_jsonl_path):
+        print('Reading MediCaT ...')
+        medicat_train_data_raw = read_jsonl(medicat_train_jsonl_path)
+
+        # filter and construct data
+        medicat_train_data = []
+        for elem in medicat_train_data_raw:
+            filename = f"{elem['pdf_hash']}_{elem['fig_uri']}"
+            if filename == 'ffd83b6453f94f2a1ddb346e324f5bdbf228c1f3_4-Figure3-1.png':
+                continue
+            text = elem['s2_caption']
+            if elem.get('s2orc_references', None) is not None:
+                text = text + ' ' + ' '.join(elem['s2orc_references'])
+            medicat_train_data.append({'Figure_path': filename, 'text': text})
+
+        converted_data.extend(convert(medicat_train_data, image_key='Figure_path', image_dir=medicat_image_dir))
+    else:
+        print('Skip MediCaT')
+
     if include_pmcoa_using_path != '':
         print('Reading PMC-OA ...')
         pmcoa_image_dir = os.path.join(include_pmcoa_using_path, 'caption_T060_filtered_top4_sep_v0_subfigures')
         pmcoa_train_data = read_jsonl(os.path.join(include_pmcoa_using_path, 'train.jsonl'))
-        converted_data.extend(convert(pmcoa_train_data, image_key='image', image_dir=pmcoa_image_dir, text_key='caption', random_instruction=True))
+        converted_data.extend(convert(pmcoa_train_data, image_key='image', image_dir=pmcoa_image_dir, text_key='caption'))
         save_train_path = save_train_path.replace('_train.json', '_pmcoa_train.json')
 
         print('Save json', len(converted_data), 'lines ...')
@@ -179,7 +208,7 @@ def convert_textplus(pmcvqa_text_dir, save_dir, include_pmcoa_using_path='', inc
             for text in id_patient_dict[id]:
                 patients_train_data.append({'Figure_path': f, 'text': text})
 
-        converted_data.extend(convert(patients_train_data, image_key='Figure_path', image_dir=patients_image_dir, random_instruction=True, instruction_list=INSTRUCTION_CASE_LIST))
+        converted_data.extend(convert(patients_train_data, image_key='Figure_path', image_dir=patients_image_dir))
 
         save_train_path = save_train_path.replace('_train.json', '_patients_train.json')
 
@@ -207,5 +236,5 @@ if __name__ == '__main__':
         print('Download VQA-RAD and VQA-RAD-text in advance.')
         convert_vqarad(os.path.join(args.data_dir, 'VQA_RAD'), args.save_dir)
     elif args.dataset == 'textplus':
-        print('Download PMC-VQA-text, ROCOv2, LLaVA-Med-60K-IM-text, PubMedVision, PMC-OA, PMC-Patients, and PMC-Patients-images in advance.')
+        print('Download PMC-VQA-text, ROCOv2, LLaVA-Med-60K-IM-text, PubMedVision, MediCaT, PMC-OA, PMC-Patients, and PMC-Patients-images in advance.')
         convert_textplus(os.path.join(args.data_dir, 'PMC-VQA-text'), args.save_dir, os.path.join(args.data_dir, 'pmc_oa'), os.path.join(args.data_dir, 'PMC-VQA-text'))

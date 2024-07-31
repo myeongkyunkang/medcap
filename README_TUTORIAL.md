@@ -3,7 +3,7 @@
 ## SLAKE-text
 
 Download the [SLAKE](https://www.med-vqa.com/slake/) and [SLAKE-text](https://huggingface.co/datasets/myeongkyunkang/SLAKE-text) datasets to your local machine and then run the following.
-Afterward, download the vision encoder [`medcap-pmcoa`](https://huggingface.co/myeongkyunkang/medcap-pmcoa) to your local machine.
+Afterward, download the vision encoder [medcap-textplus-pmcoa-patients-llama3](https://huggingface.co/myeongkyunkang/medcap-textplus-pmcoa-patients-llama3) to your local machine.
 
 ```
 python tools/convert_to_sharegpt.py --dataset slake
@@ -20,7 +20,7 @@ vision='biomedclip'
 epochs=5
 data_dir='./datasets/medcap'
 llama_dir='./models/llama3/Meta-Llama-3-8B-Instruct'
-pretrained_medcap='./models/medcap-pmcoa/last.pt'
+pretrained_medcap='./models/medcap-textplus-pmcoa-patients-llama3/last.pt'
 result_dir='./results_medcap'
 postfix_result=''
 cmd=f"PYTHONPATH=./ CUDA_VISIBLE_DEVICES={GPU} python torchtune/_cli/tune.py run full_finetune_single_device --config llama3/8B_full_single_device \
