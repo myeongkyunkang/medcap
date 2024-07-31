@@ -54,7 +54,7 @@ Download the [SLAKE](https://www.med-vqa.com/slake/) dataset to your local machi
 python
 import os
 GPU=0
-name='textplus'
+name='textplus_pmcoa_patients'
 vision='biomedclip'
 epochs=5
 data_dir='./datasets/medcap'
@@ -91,7 +91,7 @@ python
 import os
 GPU='0'
 bit=4
-name='textplus'
+name='textplus_pmcoa_patients'
 vision='biomedclip'
 epochs=5
 llama_dir='./models/llama3/Meta-Llama-3-70B-Instruct-hf'
