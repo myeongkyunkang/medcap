@@ -1,27 +1,19 @@
-import os
-
 import fire
 import numpy as np
 import pandas as pd
+
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, BitsAndBytesConfig
 
 
 def main(
         ckpt_dir='',
         temperature=0.0001,
-        top_p=0.9,
         max_new_tokens=200,
-        bit=8,
-        gpu=(0, 1),
+        bit=4,
         exp='chat',
         csv_path=None,
 ):
-    os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-    os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(g) for g in gpu]) if isinstance(gpu, tuple) else str(gpu)
-
-    # import after CUDA_VISIBLE_DEVICES declared
-    import torch
-    from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, BitsAndBytesConfig
-
     # load model
     if bit == 4:
         bnb_config = BitsAndBytesConfig(
@@ -75,7 +67,6 @@ def main(
                 pad_token_id=tokenizer.eos_token_id,
                 do_sample=False,
                 temperature=temperature,
-                top_p=top_p,
             )
             generated_text = outputs[0]['generated_text'][-1]['content']
             print(generated_text)
@@ -101,7 +92,6 @@ def main(
                 pad_token_id=tokenizer.eos_token_id,
                 do_sample=False,
                 temperature=temperature,
-                top_p=top_p,
             )
             generated_text = outputs[0]['generated_text'][-1]['content']
             print(dialogs[0]['content'])
@@ -121,9 +111,8 @@ def main(
             out_dict['instruction'].append(dialogs[0]['content'])
             out_dict['generated'].append(generated_text)
 
-        pd.DataFrame(out_dict).to_csv(csv_path.replace('.csv', f'_70B_{bit}bit_out.csv'), index=False, encoding='utf-8-sig')
-        with open(csv_path.replace('.csv', f'_70B_{bit}bit_acc.csv'), 'wt') as f:
-            f.write(f'{np.mean(correct_list)}\n')
+        acc = round(np.mean(correct_list), 5)
+        pd.DataFrame(out_dict).to_csv(csv_path.replace('.csv', f'-70B_{bit}bit-{acc}.csv'), index=False, encoding='utf-8-sig')
 
 
 if __name__ == '__main__':

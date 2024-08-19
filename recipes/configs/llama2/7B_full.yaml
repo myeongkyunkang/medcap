@@ -26,7 +26,6 @@ tokenizer:
 # Dataset
 dataset:
   _component_: torchtune.datasets.alpaca_dataset
-  train_on_input: True
 seed: null
 shuffle: True
 
@@ -63,6 +62,7 @@ device: cuda
 
 # Memory management
 enable_activation_checkpointing: True
+memory_efficient_fsdp_wrap: False
 
 # Reduced precision
 dtype: bf16
@@ -72,4 +72,5 @@ metric_logger:
   _component_: torchtune.utils.metric_logging.DiskLogger
   log_dir: ${output_dir}
 output_dir: /tmp/alpaca-llama2-finetune
-log_every_n_steps: null
+log_every_n_steps: 1
+log_peak_memory_stats: False

@@ -43,17 +43,16 @@ class ChatFormat(ABC):
 class Llama2ChatFormat(ChatFormat):
     """
     Chat format that formats human and system prompts with appropriate tags
-    used in LLaMA2 pre-training. Taken from Meta's official `LLaMA inference
+    used in Llama2 pre-training. Taken from Meta's official `Llama inference
     repository <https://github.com/meta-llama/llama/blob/main/llama/generation.py>`_.
 
-    Example:
-        .. code-block:: text
+    .. code-block:: text
 
-            "[INST] <<SYS>>
-            You are a helpful, respectful and honest assistant.
-            <</SYS>>"
+        "[INST] <<SYS>>
+        You are a helpful, respectful and honest assistant.
+        <</SYS>>"
 
-            I am going to Paris, what should I see? [/INST] Paris, the capital of France, is known for its stunning architecture..."
+        I am going to Paris, what should I see? [/INST] Paris, the capital of France, is known for its stunning architecture..."
 
 
     """
@@ -87,7 +86,7 @@ class Llama2ChatFormat(ChatFormat):
             if message.role == "system":
                 content = cls.system.format(content=message.content)
                 system_message = content
-                # Incorporate the system message in the user message - LLaMA2 only
+                # Incorporate the system message in the user message - Llama2 only
                 # looks for the <<SYS>> tags and not the explicit role so this will
                 # be treated the same as an actual system message. We do this because
                 # of the nesting of the system prompt in the user message.
@@ -99,7 +98,6 @@ class Llama2ChatFormat(ChatFormat):
             elif message.role == "assistant":
                 # No special formatting needed for assistant message
                 content = message.content
-            assert content != ""
             formatted_dialogue.append(
                 Message(role=message.role, content=content, masked=message.masked),
             )
@@ -110,14 +108,13 @@ class MistralChatFormat(ChatFormat):
     """
     Formats according to `Mistral's instruct model <https://docs.mistral.ai/models/>`_.
 
-    It is identical to `Llama2ChatFormat`, except it does not support system
+    It is identical to :class:`Llama2ChatFormat`, except it does not support system
     prompts.
 
-    Example:
-        .. code-block:: text
+    .. code-block:: text
 
-            "[INST] I am going to Paris, what should I see? [/INST] Paris, the capital
-            of France, is known for its stunning architecture..."
+        "[INST] I am going to Paris, what should I see? [/INST] Paris, the capital
+        of France, is known for its stunning architecture..."
 
     """
 
@@ -158,7 +155,6 @@ class MistralChatFormat(ChatFormat):
             elif message.role == "assistant":
                 # No special formatting needed for assistant message
                 content = message.content
-            assert content != ""
             formatted_dialogue.append(
                 Message(role=message.role, content=content, masked=message.masked),
             )
@@ -171,17 +167,17 @@ class ChatMLFormat(ChatFormat):
     <https://github.com/MicrosoftDocs/azure-docs/blob/772c14eeabfa0c0c561d5c2d34ef19341f528b7b/articles/ai-services/openai/how-to/chat-markup-language.md>`_
     used by their chat models.
 
-    It is the default chat format used by HuggingFace models.
+    It is the default chat format used by Hugging Face models.
 
-    Example:
-        .. code-block:: text
+    .. code-block:: text
 
-            <|im_start|>system
-            Provide some context and/or instructions to the model.<|im_end|>
-            <|im_start|>user
-            The user’s message goes here<|im_end|>
-            <|im_start|>assistant
-            The assistant’s response goes here<|im_end|>
+        <|im_start|>system
+        Provide some context and/or instructions to the model.<|im_end|>
+        <|im_start|>user
+        The user’s message goes here<|im_end|>
+        <|im_start|>assistant
+        The assistant’s response goes here<|im_end|>
+
     """
 
     IM_START, IM_END = "<|im_start|>", "<|im_end|>"
@@ -217,7 +213,6 @@ class ChatMLFormat(ChatFormat):
                 content = cls.assistant.format(
                     content=message.content,
                 )
-            assert content != ""
             formatted_dialogue.append(
                 Message(role=message.role, content=content, masked=message.masked),
             )

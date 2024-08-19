@@ -4,7 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Any, List
+from typing import Any, List, Optional
 
 from torchtune.data._types import Message
 
@@ -12,10 +12,23 @@ from torchtune.data._types import Message
 def truncate(
     tokens: List[Any],
     max_seq_len: int,
-    eos_id: Any,
+    eos_id: Optional[Any] = None,
 ) -> List[Any]:
+    """
+    Truncate a list of tokens to a maximum length. If eos_id is provided, the last
+    token will be replaced with eos_id.
+
+    Args:
+        tokens (List[Any]): list of tokens to truncate
+        max_seq_len (int): maximum length of the list
+        eos_id (Optional[Any]): token to replace the last token with. If None, the
+            last token will not be replaced. Default is None.
+
+    Returns:
+        List[Any]: truncated list of tokens
+    """
     tokens_truncated = tokens[:max_seq_len]
-    if tokens_truncated[-1] != eos_id:
+    if eos_id is not None and tokens_truncated[-1] != eos_id:
         tokens_truncated[-1] = eos_id
     return tokens_truncated
 
@@ -59,10 +72,4 @@ def validate_messages(
             raise ValueError(
                 f"System message at index {i} in messages, but system messages must come first"
             )
-        # Assistant messages can be empty because they will not be tokenized and
-        # will not contribute to the loss, assuming the entire batch is not full
-        # of empty assistant messages. The alpaca dataset is an example of the
-        # output assistant message being empty sometimes.
-        if not message.content and message.role != "assistant":
-            raise ValueError(f"Message at index {i} in messages is empty")
         last_turn = message.role

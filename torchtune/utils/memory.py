@@ -5,8 +5,9 @@
 # LICENSE file in the root directory of this source tree.
 
 import gc
+import logging
 
-from typing import Any, Dict, Optional, Set
+from typing import Any, Callable, Dict, Set, Type, Union
 
 import torch
 
@@ -15,23 +16,37 @@ from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     apply_activation_checkpointing,
 )
 from torch.distributed.fsdp.wrap import ModuleWrapPolicy
+from torchtune.utils.logging import get_logger
+
+_log: logging.Logger = get_logger()
+
+ACWrapPolicyType: Type = Union[Set[Type], Callable[[nn.Module, bool, int], bool]]
 
 
 def set_activation_checkpointing(
-    model: nn.Module, auto_wrap_policy: Optional[Set[nn.Module]] = None, **kwargs
+    model: nn.Module, auto_wrap_policy: ACWrapPolicyType, **kwargs
 ) -> None:
-    """Utility to setup activation checkpointing and wrap the model for checkpointing.
+    """Utility to apply activation checkpointing to the passed-in model.
 
     Args:
-        model (nn.Module): Model to setup activation checkpointing.
-        auto_wrap_policy (Optional[Set[nn.Module]]): Policy to wrap module.
-        **kwargs: additional arguments to pass to torch.distributed activation checkpointing.
+        model (nn.Module): Model to apply activation checkpointing to.
+        auto_wrap_policy (ACWrapPolicyType): Policy to wrap module.
+            This can either be a set of ``nn.Module`` types, in which case, modules of the specified type(s)
+            will be wrapped individually with activation checkpointing, or a ``callable`` policy describing
+            how to wrap the model with activation checkpointing. For more information on authoring custom
+            policies, please see this tutorial:
+            https://pytorch.org/tutorials/intermediate/FSDP_adavnced_tutorial.html#transformer-wrapping-policy.
+        **kwargs: additional arguments to pass to ``torch.distributed`` activation checkpointing.
     """
-    wrap_policy = ModuleWrapPolicy(auto_wrap_policy or set())
-    apply_activation_checkpointing(model, auto_wrap_policy=wrap_policy, **kwargs)
+    if isinstance(auto_wrap_policy, set):
+        auto_wrap_policy = ModuleWrapPolicy(auto_wrap_policy)
+    apply_activation_checkpointing(model, auto_wrap_policy=auto_wrap_policy, **kwargs)
 
 
 def cleanup_before_training() -> None:
+    """
+    Call gc collect, empty CUDA cache, and reset peak memory stats.
+    """
     gc.collect()
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
@@ -42,30 +57,35 @@ class OptimizerInBackwardWrapper:
     A bare-bones class meant for checkpoint save and load for optimizers running
     in backward. Usage is limited to the following:
 
-    optim_dict = {
-        p: config.instantiate(cfg_optimizer, [p])
-        for p in self._model.parameters()
-    }
-    # Save checkpoint
-    ckpt = OptimizerInBackwardWrapper(optim_dict).state_dict()
-    torch.save("/tmp/optim_ckpt", ckpt)
-    # Load checkpoint
-    placeholder_optim_dict = {
-        p: config.instantiate(cfg_optimizer, [p])
-        for p in self._model.parameters()
-    }
-    wrapper = OptimInBackwardWrapper(placeholder_optim_dict)
-    # load_state_dict expects a dict produced by this class's
-    # state_dict method.
-    wrapper.load_state_dict(torch.load("/tmp/optim_ckpt"))
-    # placeholder_optim_dict now has updated optimizer states.
-
-    NOTE: This wrapper is only meant to be used for single-device use cases.
-        Distributed use cases such as FSDP, which require specialized
-        optimizer state checkpointing, are not supported.
+    Note:
+        This wrapper is only meant to be used for single-device use cases.
+        Distributed use cases such as FSDP, which require specialized optimizer state checkpointing, are not supported.
 
     Args:
         optim_map (Dict[str, torch.optim.Optimizer]): Mapping from parameter names to optimizers.
+
+    Example:
+        >>> optim_dict = {
+        >>>     p: config.instantiate(cfg_optimizer, [p])
+        >>>     for p in self._model.parameters()
+        >>> }
+        >>>
+        >>> # Save checkpoint
+        >>> ckpt = OptimizerInBackwardWrapper(optim_dict).state_dict()
+        >>> torch.save("/tmp/optim_ckpt", ckpt)
+        >>>
+        >>> # Load checkpoint
+        >>> placeholder_optim_dict = {
+        >>>     p: config.instantiate(cfg_optimizer, [p])
+        >>>     for p in self._model.parameters()
+        >>> }
+        >>>
+        >>> wrapper = OptimInBackwardWrapper(placeholder_optim_dict)
+        >>>
+        >>> # load_state_dict expects a dict produced by this class's
+        >>> # state_dict method.
+        >>> wrapper.load_state_dict(torch.load("/tmp/optim_ckpt"))
+        >>> # placeholder_optim_dict now has updated optimizer states.
 
     """
 
@@ -126,7 +146,7 @@ def create_optim_in_bwd_wrapper(
     Args:
         model (torch.nn.Module): Model that contains parameters that are being optimized. For now,
             it is assumed that all parameters being optimized belong to a single top-level model.
-            `named_parameters` attribute of `model` will be accessed to look up parameter names for
+            ``named_parameters`` attribute of ``model`` will be accessed to look up parameter names for
             parameters being optimized.
         optim_dict (Dict[torch.nn.Parameter, torch.optim.Optimizer]): Mapping from
             parameters to optimizers.
@@ -145,6 +165,10 @@ def register_optim_in_bwd_hooks(
     """
     Register hooks for optimizer step running in backward.
 
+    When fusing the optimizer step into backward, we need to call ``.step()`` on the optimizer
+    for a given parameter as soon as its gradient is ready. This utility registers post-accumulate-grad
+    hooks on all parameters in the model to achieve this.
+
     Args:
         model (torch.nn.Module): Model whose parameters will be optimized. Note that currently
             hooks for ALL parameters in the model will be registered.
@@ -160,11 +184,11 @@ def register_optim_in_bwd_hooks(
         p.register_post_accumulate_grad_hook(optim_step)
 
 
-def memory_stats_log(device: torch.device, reset_stats: bool = True) -> dict:
+def get_memory_stats(device: torch.device, reset_stats: bool = True) -> dict:
     """
     Computes a memory summary for the passed in device. If ``reset_stats`` is ``True``, this will
     also reset CUDA's peak memory tracking. This is useful to get data around relative use of peak
-    memory (i.e. peak memory during model init, during forward, etc) and optimize memory for
+    memory (e.g. peak memory during model init, during forward, etc) and optimize memory for
     individual sections of training.
 
     Args:
@@ -176,7 +200,7 @@ def memory_stats_log(device: torch.device, reset_stats: bool = True) -> dict:
         and peak memory reserved. This dict is useful for logging memory stats.
 
     Raises:
-        ValueError: If the passed in device is not CUDA.
+        ValueError: If the passed-in device is not CUDA.
     """
     if device.type != "cuda":
         raise ValueError(
@@ -196,3 +220,21 @@ def memory_stats_log(device: torch.device, reset_stats: bool = True) -> dict:
         "peak_memory_reserved": peak_mem_reserved,
     }
     return memory_stats
+
+
+def log_memory_stats(stats: Dict[str, float]) -> None:
+    """
+    Logs a dict containing memory stats to the logger. ``stats`` should contain the fields
+    ``peak_memory_active``, ``peak_memory_alloc``, and ``peak_memory_reserved`` as
+    returned by :func:`torchtune.utils.get_memory_stats`.
+
+    Args:
+        stats (Dict[str, float]): A dictionary containing the peak memory active, peak memory
+            allocated, and peak memory reserved stats.
+    """
+    _log.info(
+        "Memory stats after model init:"
+        f"\n\tGPU peak memory allocation: {stats['peak_memory_alloc']:.2f} GB"
+        f"\n\tGPU peak memory reserved: {stats['peak_memory_reserved']:.2f} GB"
+        f"\n\tGPU peak memory active: {stats['peak_memory_active']:.2f} GB"
+    )

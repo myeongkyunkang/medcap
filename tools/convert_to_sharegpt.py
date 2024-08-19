@@ -5,9 +5,19 @@ import random
 
 import pandas as pd
 
-from utils import MRI_TOKENS, INSTRUCTION_LIST
-
 random.seed(0)
+
+MRI_TOKENS = '①' * 50
+INSTRUCTION_LIST = [
+    "Describe the image in a detailed and informative manner.", "Summarize the visual content of the image clearly.", "Provide a rich, descriptive narrative of the image.", "Offer a brief but comprehensive description of the image.", "Analyze the image thoroughly and in detail.", "Narrate the contents of the image with precision.", "Give a detailed account of the given image.", "Describe the following image in detail.", "Examine the image closely and share its details.",
+    "Give a short, clear explanation of the image.", "Break down the elements of the image in detail.", "Relay a brief, clear account of the image shown.", "Share a concise interpretation of the image provided.", "Write a short but informative summary of the image.", "Walk through the important details of the image.", "Explain the various aspects of the image.", "Describe the image concisely.", "Offer a succinct explanation of the image.",
+    "Characterize the image with a well-detailed description.", "Write an exhaustive depiction of the given image.", "Clarify the contents of the displayed image in great detail.", "Render a clear and concise summary of the image.", "Give an elaborate explanation of the image you see.", "Offer a thorough analysis of the image.", "Share a comprehensive rundown of the presented image.", "Create a compact narrative representing the image.",
+    "Present a concise description of the image’s key features.", "Can you provide a radiology report for this medical image?", "Describe the medical image you see.", "What is depicted in this picture?", "Please report this medical scan.", "What is the medical significance of this image?", "What can you infer from this picture?", "Can you provide a quick summary of this image?", "Describe this medical scan.", "Please write a radiology report for this image.",
+    "Can you summarize the images presented?", "Please generate a radiology report for this scan.", "Describe the regions of interest in this scan.", "Please provide a caption for this medical image.", "Can you provide a brief summary of this radiograph?", "Describe the structures involved in this medical image.", "What are the findings presented in this medical scan?", "Please write a radiology report for this scan.", "Can you provide a description of this medical scan?",
+    "Please caption this medical scan.", "Can you provide a report summary for this medical scan?", "Please describe this picture.", "Can you describe the image for me?", "What details stand out in this image?", "Could you provide a detailed description of what is shown in the picture?", "What is the main focus of this photograph?", "Describe the composition and the subjects in this picture.", "Explain the visual content of the image.",
+    "Analyze the image in a comprehensive and detailed manner.", "Write a detailed description of the given image.", "What is this photo about?", "What is depicted in the image?",
+]
+INSTRUCTION_CASE_LIST = ["Can you provide a case report?", "Please write a case report.", "Please generate a case report.", "Can you provide a case summary?", ]
 
 
 def convert(data, image_key, image_dir, text_key='text', instruction_type='no', instruction_list=INSTRUCTION_LIST):
@@ -52,32 +62,6 @@ def convert_pmcoa(pmcoa_dir, save_dir):
 
     with open(save_train_path, 'w') as json_file:
         json.dump(convert(train_data, image_key='image', image_dir=image_dir, text_key='caption'), json_file, indent=4)
-
-
-def convert_slake(slake_dir, save_dir):
-    image_dir = os.path.join(slake_dir, 'imgs')
-    train_json_path = os.path.join(slake_dir, 'train_text.json')
-    val_json_path = os.path.join(slake_dir, 'validation_text.json')
-    test_json_path = os.path.join(slake_dir, 'test_text.json')
-
-    save_train_path = os.path.join(save_dir, 'slake_train.json')
-    save_val_path = os.path.join(save_dir, 'slake_val.json')
-    save_test_path = os.path.join(save_dir, 'slake_test.json')
-
-    # read json
-    with open(train_json_path, 'r', encoding='utf-8') as f:
-        train_data = json.loads(f.read())
-    with open(val_json_path, 'r', encoding='utf-8') as f:
-        val_data = json.loads(f.read())
-    with open(test_json_path, 'r', encoding='utf-8') as f:
-        test_data = json.loads(f.read())
-
-    with open(save_train_path, 'w') as json_file:
-        json.dump(convert(train_data, image_key='img_name', image_dir=image_dir), json_file, indent=4)
-    with open(save_val_path, 'w') as json_file:
-        json.dump(convert(val_data, image_key='img_name', image_dir=image_dir), json_file, indent=4)
-    with open(save_test_path, 'w') as json_file:
-        json.dump(convert(test_data, image_key='img_name', image_dir=image_dir), json_file, indent=4)
 
 
 def convert_vqarad(vqarad_dir, save_dir):
@@ -229,9 +213,6 @@ if __name__ == '__main__':
     if args.dataset == 'pmcoa':
         print('Download PMC-OA in advance.')
         convert_pmcoa(os.path.join(args.data_dir, 'pmc_oa'), args.save_dir)
-    elif args.dataset == 'slake':
-        print('Download SLAKE and SLAKE-text in advance.')
-        convert_slake(os.path.join(args.data_dir, 'SLAKE'), args.save_dir)
     elif args.dataset == 'vqarad':
         print('Download VQA-RAD and VQA-RAD-text in advance.')
         convert_vqarad(os.path.join(args.data_dir, 'VQA_RAD'), args.save_dir)

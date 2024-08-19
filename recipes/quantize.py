@@ -46,6 +46,25 @@ class QuantizationRecipe:
                 larger blocks trade off memory for perf, recommended to be a constant
                 multiple of groupsize.
             `percdamp`: GPTQ stablization hyperparameter, recommended to be .01
+
+    8da4w (PyTorch 2.3+):
+        torchtune.utils.quantization.Int8DynActInt4WeightQuantizer
+        int8 per token dynamic activation with int4 weight only per axis group quantization
+        Args:
+            `groupsize` (int): a parameter of int4 weight only quantization,
+            it refers to the size of quantization groups which get independent quantization parameters
+            e.g. 32, 64, 128, 256, smaller numbers means more fine grained and higher accuracy,
+            but also higher memory overhead
+
+    8da4w-qat (PyTorch 2.4+):
+        torchtune.utils.quantization.Int8DynActInt4WeightQATQuantizer
+        int8 per token dynamic activation with int4 weight only per axis group quantization
+        Same as "8da4w", but for quantizing QAT checkpoints
+        Args:
+            `groupsize` (int): a parameter of int4 weight only quantization,
+            it refers to the size of quantization groups which get independent quantization parameters
+            e.g. 32, 64, 128, 256, smaller numbers means more fine grained and higher accuracy,
+            but also higher memory overhead
     """
 
     def __init__(self, cfg: DictConfig) -> None:
@@ -75,6 +94,8 @@ class QuantizationRecipe:
         with utils.set_default_dtype(self._dtype), self._device:
             model = config.instantiate(model_cfg)
 
+        if "qat" in self._quantization_mode:
+            model = self._quantizer.prepare(model)
         model.load_state_dict(model_state_dict)
 
         # Validate model was loaded in with the expected dtype.
@@ -85,7 +106,10 @@ class QuantizationRecipe:
     @torch.no_grad()
     def quantize(self, cfg: DictConfig):
         t0 = time.perf_counter()
-        self._model = self._quantizer.quantize(self._model)
+        if "qat" in self._quantization_mode:
+            self._model = self._quantizer.convert(self._model)
+        else:
+            self._model = self._quantizer.quantize(self._model)
         t = time.perf_counter() - t0
         logger.info(f"Time for quantization: {t:.02f} sec")
         logger.info(f"Memory used: {torch.cuda.max_memory_allocated() / 1e9:.02f} GB")
@@ -97,7 +121,7 @@ class QuantizationRecipe:
         output_dir = Path(cfg.checkpointer.output_dir)
         output_dir.mkdir(exist_ok=True)
         checkpoint_file = Path.joinpath(
-            output_dir, f"{file_name}-{self._quantization_mode}"
+            output_dir, f"{file_name}-{self._quantization_mode}".rstrip("-qat")
         ).with_suffix(".pt")
 
         torch.save(ckpt_dict, checkpoint_file)

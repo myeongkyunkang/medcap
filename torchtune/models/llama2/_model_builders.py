@@ -9,7 +9,7 @@ from functools import partial
 from torchtune.models.llama2._component_builders import llama2, lora_llama2
 
 from torchtune.modules import TransformerDecoder
-from torchtune.modules.tokenizers import SentencePieceTokenizer
+from torchtune.models.llama2._tokenizer import Llama2Tokenizer
 from torchtune.modules.peft import LORA_ATTN_MODULES
 
 
@@ -22,7 +22,7 @@ llama2 7B model.
 
 def llama2_7b() -> TransformerDecoder:
     """
-    Builder for creating a Llama2 model initialized w/ the default 7b parameter values
+    Builder for creating a Llama2 model initialized w/ the default 7B parameter values
     from https://arxiv.org/abs/2307.09288
 
     Returns:
@@ -39,12 +39,17 @@ def llama2_7b() -> TransformerDecoder:
         norm_eps=1e-5,
     )
 
+def llama2_tokenizer(path: str) -> Llama2Tokenizer:
+    """
+    Tokenizer for Llama2.
 
-def llama2_tokenizer(path: str) -> SentencePieceTokenizer:
-    tokenizer = SentencePieceTokenizer(path)
-    # Original tokenizer has no pad_id, which causes indexing errors when batch training
-    tokenizer.pad_id = 0
-    return tokenizer
+    Args:
+        path (str): path to the tokenizer
+
+    Returns:
+        Llama2Tokenizer: Instantiation of the Llama2 tokenizer
+    """
+    return Llama2Tokenizer(path)
 
 
 def lora_llama2_7b(
@@ -74,6 +79,7 @@ def lora_llama2_7b(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         quantize_base (bool): Whether to quantize base model weights
+        lora_dropout (float): dropout probability for LoRA linear layers. Default: 0.05
 
     Returns:
         TransformerDecoder: Instantiation of Llama2 7B model with LoRA applied
@@ -92,14 +98,15 @@ def lora_llama2_7b(
         norm_eps=1e-5,
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
-        lora_dropout=0.05,
+        lora_dropout=lora_dropout,
         quantize_base=quantize_base,
     )
+
 
 qlora_llama2_7b = partial(lora_llama2_7b, quantize_base=True)
 
 qlora_llama2_7b.__doc__ = """
-Builder for creating a Llama2 model with QLoRA enabled. Base model weights in linear layers
+Builder for creating a Llama2 7B model with QLoRA enabled. Base model weights in linear layers
 that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.14314.
 Please see `lora_llama2_7b` for full API arguments.
 """
@@ -107,7 +114,7 @@ Please see `lora_llama2_7b` for full API arguments.
 
 def llama2_13b() -> TransformerDecoder:
     """
-    Builder for creating a Llama2 model initialized w/ the default 13b parameter values
+    Builder for creating a Llama2 model initialized w/ the default 13B parameter values
     from https://arxiv.org/abs/2307.09288
 
     Returns:
@@ -123,7 +130,6 @@ def llama2_13b() -> TransformerDecoder:
         max_seq_len=4096,
         attn_dropout=0.0,
         norm_eps=1e-5,
-
     )
 
 
@@ -133,6 +139,7 @@ def lora_llama2_13b(
     apply_lora_to_output: bool = False,
     lora_rank: int = 8,
     lora_alpha: float = 16,
+    lora_dropout: float = 0.05,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -152,6 +159,7 @@ def lora_llama2_13b(
             Default: False
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
+        lora_dropout (float): dropout probability for LoRA linear layers. Default: 0.05
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -167,26 +175,32 @@ def lora_llama2_13b(
         num_heads=40,
         num_kv_heads=40,
         embed_dim=5120,
-        max_seq_len=4096,
         intermediate_dim=13824,
+        max_seq_len=4096,
         attn_dropout=0.0,
         norm_eps=1e-5,
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
-        lora_dropout=0.05,
+        lora_dropout=lora_dropout,
         quantize_base=quantize_base,
     )
 
+
 qlora_llama2_13b = partial(lora_llama2_13b, quantize_base=True)
+qlora_llama2_13b.__doc__ = """
+Builder for creating a Llama2 13B model with QLoRA enabled. Base model weights in linear layers
+that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.14314.
+Please see `lora_llama2_13b` for full API arguments.
+"""
 
 
 def llama2_70b() -> TransformerDecoder:
     """
-    Builder for creating a Llama2 model initialized w/ the default 70 parameter values
+    Builder for creating a Llama2 model initialized w/ the default 70B parameter values
     from https://arxiv.org/abs/2307.09288
 
     Returns:
-        TransformerDecoder: Instantiation of Llama2 70 model
+        TransformerDecoder: Instantiation of Llama2 70B model
     """
     return llama2(
         vocab_size=32_000,
@@ -213,7 +227,7 @@ def lora_llama2_70b(
     """
     Builder for creating a Llama2 70B model with LoRA enabled.
 
-    The Llama2 defaults are the same as in :func:`~torchtune.models.llama2.llama2_7b`,
+    The Llama2 defaults are the same as in :func:`~torchtune.models.llama2.llama2_70b`,
     while LoRA default params are based on
     https://github.com/tloen/alpaca-lora/blob/8bb8579e403dc78e37fe81ffbb253c413007323f/finetune.py#L41-L43.
 
@@ -227,6 +241,7 @@ def lora_llama2_70b(
             Default: False
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
+        lora_dropout (float): dropout probability for LoRA linear layers. Default: 0.05
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -247,6 +262,13 @@ def lora_llama2_70b(
         norm_eps=1e-5,
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
-        lora_dropout=0.05,
+        lora_dropout=lora_dropout,
         quantize_base=quantize_base,
     )
+
+qlora_llama2_70b = partial(lora_llama2_70b, quantize_base=True)
+qlora_llama2_70b.__doc__ = """
+Builder for creating a Llama2 70B model with QLoRA enabled. Base model weights in linear layers
+that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.14314.
+Please see `lora_llama2_70b` for full API arguments.
+"""

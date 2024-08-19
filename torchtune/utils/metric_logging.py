@@ -97,12 +97,14 @@ class DiskLogger(MetricLoggerInterface):
 
     def log(self, name: str, data: Scalar, step: int) -> None:
         self._file.write(f"Step {step} | {name}:{data}\n")
+        self._file.flush()
 
     def log_dict(self, payload: Mapping[str, Scalar], step: int) -> None:
         self._file.write(f"Step {step} | ")
         for name, data in payload.items():
             self._file.write(f"{name}:{data} ")
         self._file.write("\n")
+        self._file.flush()
 
     def __del__(self) -> None:
         self._file.close()
@@ -198,10 +200,10 @@ class WandBLogger(MetricLoggerInterface):
 
         # define default x-axis (for latest wandb versions)
         if getattr(self._wandb, "define_metric", None):
-            self._wandb.define_metric("total_training_steps")
-            self._wandb.define_metric(
-                "*", step_metric="total_training_steps", step_sync=True
-            )
+            self._wandb.define_metric("global_step")
+            self._wandb.define_metric("*", step_metric="global_step", step_sync=True)
+
+        self.config_allow_val_change = kwargs.get("allow_val_change", False)
 
     def log_config(self, config: DictConfig) -> None:
         """Saves the config locally and also logs the config to W&B. The config is
@@ -214,7 +216,9 @@ class WandBLogger(MetricLoggerInterface):
         """
         if self._wandb.run:
             resolved = OmegaConf.to_container(config, resolve=True)
-            self._wandb.config.update(resolved)
+            self._wandb.config.update(
+                resolved, allow_val_change=self.config_allow_val_change
+            )
             try:
                 output_config_fname = Path(
                     os.path.join(
@@ -237,11 +241,11 @@ class WandBLogger(MetricLoggerInterface):
 
     def log(self, name: str, data: Scalar, step: int) -> None:
         if self._wandb.run:
-            self._wandb.log({name: data, "total_training_steps": step})
+            self._wandb.log({name: data, "global_step": step})
 
     def log_dict(self, payload: Mapping[str, Scalar], step: int) -> None:
         if self._wandb.run:
-            self._wandb.log({**payload, "total_training_steps": step})
+            self._wandb.log({**payload, "global_step": step})
 
     def __del__(self) -> None:
         if self._wandb.run:

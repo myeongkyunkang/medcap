@@ -5,7 +5,6 @@
 # LICENSE file in the root directory of this source tree.
 
 import contextlib
-import functools
 from typing import Any, Dict, Generator, List, Literal, Optional, Protocol, Set
 
 from torch import nn
@@ -33,7 +32,6 @@ class AdapterModule(Protocol):
         pass
 
 
-@functools.lru_cache()
 def get_adapter_params(model: nn.Module) -> Dict[str, nn.Parameter]:
     """
     Return the subset of parameters from a model that correspond to an adapter.
@@ -61,24 +59,6 @@ def get_adapter_params(model: nn.Module) -> Dict[str, nn.Parameter]:
                 current_adapter_params == []
             ), f"Adapter params {current_adapter_params} not converted"
     return adapter_params
-
-
-@functools.lru_cache()
-def _get_base_model_params(model: nn.Module) -> Dict[str, Any]:
-    """
-    Given a model containing some adapter weights, return the subset of the model's
-    parameters that correspond to the base model. Assumes that any adapter class has
-    defined the :func:`~torchtune.modules.peft.AdapterModule.adapter_params` method.
-
-    Args:
-        model (nn.Module): Instance of model class containing some adapter params.
-
-    Returns:
-        Dict[str, Any]: the subset of adapted model's state dict containing
-        only the base model's parameters.
-    """
-    adapter_params = get_adapter_params(model)
-    return {k: v for k, v in model.state_dict().items() if k not in adapter_params}
 
 
 def set_trainable_params(model: nn.Module, adapter_params: Dict[str, Any]) -> None:
@@ -261,23 +241,43 @@ def get_merged_lora_ckpt(
 
 @contextlib.contextmanager
 def disable_adapter(model: nn.Module) -> Generator[None, None, None]:
-    for _, v in model.named_modules():
+    """
+    Temporarily disable the adapters in a neural network model. This can be used,
+    for example, in DPO for treating the lora adapters as the policy model
+    and disabling it to treat the base model as the reference model.
+
+    This context manager goes through all modules in the provided neural network model,
+    and if a module has an 'adapter_params' attribute that is callable and a 'disabled' attribute,
+    it sets 'disabled' to True. Then, the control is given back to caller. Once that finalizes,
+    it sets 'disabled' back to False for all modules that were temporarily disabled.
+
+    Args:
+        model (nn.Module): The neural network model whose adapters are to be temporarily disabled.
+    Yields:
+        None: This function yields control back to the caller, with the adapters disabled.
+    Example:
+        >>> with disable_adapter(model):
+        ...     # Perform operations with adapters disabled
+        ...     pass
+
+    """
+    for _, module in model.named_modules():
         if (
-            hasattr(v, "adapter_params")
-            and callable(v.adapter_params)
-            and hasattr(v, "disabled")
+            hasattr(module, "adapter_params")
+            and callable(module.adapter_params)
+            and hasattr(module, "disabled")
         ):
-            v.disabled = True
+            module.disabled = True
     try:
         yield
     finally:
-        for _, v in model.named_modules():
+        for _, module in model.named_modules():
             if (
-                hasattr(v, "adapter_params")
-                and callable(v.adapter_params)
-                and hasattr(v, "disabled")
+                hasattr(module, "adapter_params")
+                and callable(module.adapter_params)
+                and hasattr(module, "disabled")
             ):
-                v.disabled = False
+                module.disabled = False
 
 
 def validate_missing_and_unexpected_for_lora(
@@ -292,7 +292,7 @@ def validate_missing_and_unexpected_for_lora(
     """
     A more memory-efficient way to validate that LoRA state dict loading was done properly.
 
-    Similar to validate_state_dict_for_lora, this function uses a model's LoRA config to
+    Similar to :func:`validate_state_dict_for_lora`, this function uses a model's LoRA config to
     check that LoRA and/or base model weights are loaded into the full model correctly.
     Unlike that function, this method relies only on the values of missing and unexpected
     as returned by the load_state_dict API with strict=False. This allows us to do the

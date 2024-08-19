@@ -1,9 +1,9 @@
 # Config for single device full finetuning in full_finetune_single_device.py
-# using a Llama3 8B model
+# using a Llama3 8B Instruct model
 #
 # This config assumes that you've run the following command before launching
 # this run:
-#   tune download meta-llama/Meta-Llama-3-8B --output-dir /tmp/Meta-Llama-3-8B --hf-token <HF_TOKEN>
+#   tune download meta-llama/Meta-Llama-3-8B-Instruct --output-dir /tmp/Meta-Llama-3-8B-Instruct --hf-token <HF_TOKEN>
 #
 # The default config uses an optimizer from bitsandbytes. If you do not have it installed,
 # you can install it with
@@ -23,12 +23,11 @@
 # Tokenizer
 tokenizer:
   _component_: torchtune.models.llama3.llama3_tokenizer
-  path: /tmp/Meta-Llama-3-8B/original/tokenizer.model
+  path: /tmp/Meta-Llama-3-8B-Instruct/original/tokenizer.model
 
 # Dataset
 dataset:
   _component_: torchtune.datasets.alpaca_dataset
-  train_on_input: True
 seed: null
 shuffle: True
 
@@ -38,12 +37,12 @@ model:
 
 checkpointer:
   _component_: torchtune.utils.FullModelMetaCheckpointer
-  checkpoint_dir: /tmp/Meta-Llama-3-8B/original/
+  checkpoint_dir: /tmp/Meta-Llama-3-8B-Instruct/original/
   checkpoint_files: [
     consolidated.00.pth
   ]
   recipe_checkpoint: null
-  output_dir: /tmp/Meta-Llama-3-8B/
+  output_dir: /tmp/Meta-Llama-3-8B-Instruct/
   model_type: LLAMA3
 resume_from_checkpoint: False
 
@@ -51,7 +50,7 @@ resume_from_checkpoint: False
 batch_size: 2
 epochs: 3
 optimizer:
-  _component_: bitsandbytes.optim.AdamW8bit
+  _component_: bitsandbytes.optim.PagedAdamW8bit
   lr: 2e-5
 loss:
   _component_: torch.nn.CrossEntropyLoss
@@ -74,4 +73,5 @@ metric_logger:
   _component_: torchtune.utils.metric_logging.DiskLogger
   log_dir: ${output_dir}
 output_dir: /tmp/alpaca-llama3-finetune
-log_every_n_steps: null
+log_every_n_steps: 1
+log_peak_memory_stats: False

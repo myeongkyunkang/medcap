@@ -5,25 +5,11 @@
 # LICENSE file in the root directory of this source tree.
 
 import contextlib
-from typing import (
-    ContextManager,
-    Dict,
-    Generator,
-    Iterable,
-    List,
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import Dict, Generator, Iterable, Optional, Tuple
 
 import torch
 import torch.nn as nn
-from pkg_resources import packaging
 
-from torch.cuda.amp import GradScaler
-from torch.distributed.fsdp.sharded_grad_scaler import ShardedGradScaler
-
-from torchtune.utils._device import _validate_device_from_env
 from torchtune.utils.logging import get_logger
 
 log = get_logger()
@@ -57,19 +43,21 @@ def _set_float32_precision(precision: str = "high") -> None:
         torch.backends.cudnn.allow_tf32 = True
 
 
-def list_dtypes() -> List[str]:
+def verify_bf16_support() -> bool:
     """
-    Return a list of supported dtypes for finetuning.
+    Check that bf16 is available on this hardware. Requirements:
+        - CUDA is available and supports bf16
+            - CUDA version >= 11
+            - CUDA compute capability >= 8
+        - NCCL is available and version >= 2.10
+
+    Returns:
+        bool: True if bf16 is available, False otherwise.
+
     """
-    return list(PRECISION_STR_TO_DTYPE.keys())
-
-
-def verify_bf16_support():
     return (
         torch.cuda.is_available()
-        and torch.version.cuda
         and torch.cuda.is_bf16_supported()
-        and packaging.version.parse(torch.version.cuda).release >= (11, 0)
         and torch.distributed.is_nccl_available()
         and torch.cuda.nccl.version() >= (2, 10)
     )
@@ -78,7 +66,8 @@ def verify_bf16_support():
 def get_dtype(
     dtype: Optional[str] = None, device: Optional[torch.device] = None
 ) -> torch.dtype:
-    """Get the torch.dtype corresponding to the given precision string.
+    """Get the torch.dtype corresponding to the given precision string. If no string is passed,
+    we will default to torch.float32.
 
     Note:
         If bf16 precision is requested with a CUDA device, we verify whether the device indeed supports
@@ -91,7 +80,7 @@ def get_dtype(
             to ensure that the device supports the requested precision. Default: ``None``, in which case
             a CUDA device is assumed.
     Raises:
-        ValueError: if precision isn't supported by the precision utils
+        ValueError: if precision isn't supported by the library
         RuntimeError: if bf16 precision is requested but not available on this hardware.
 
     Returns:
@@ -109,7 +98,7 @@ def get_dtype(
     # dtype must be one of the supported precisions
     if torch_dtype not in PRECISION_STR_TO_DTYPE.values():
         raise ValueError(
-            f"Dtype {torch_dtype} must be one of {', '.join(list_dtypes())} for finetuning."
+            f"Dtype {torch_dtype} must be one of {', '.join(list(PRECISION_STR_TO_DTYPE.keys()))} for finetuning."
         )
 
     # TODO (rohan-varma): prefer to use get_default_device() here to figure out whether user is training on
@@ -126,46 +115,25 @@ def get_dtype(
     return torch_dtype
 
 
-def get_gradient_scaler(fsdp: bool = False) -> Union[GradScaler, ShardedGradScaler]:
-    """
-    Returns a gradient scaler for mixed-precision training.
-
-    Args:
-        fsdp (bool): Whether FSDP is being used for training, in which case a shard-aware gradient scaler is returned.
-
-    Returns:
-        Union[GradScaler, ShardedGradScaler]: Gradient scaler object
-    """
-    return GradScaler(enabled=True) if not fsdp else ShardedGradScaler(enabled=True)
-
-
-def get_autocast(dtype: torch.dtype, device: torch.device) -> ContextManager:
-    """
-    Intelligently determines, based on the dtype if mixed precision training is supported and
-    returns the builtin torch.autocast if applicable.
-
-    Reference: https://pytorch.org/docs/stable/amp.html#torch.autocast
-
-    Args:
-        dtype (torch.dtype): dtype used to determine if mixed precision training is used.
-        device (torch.device): Pytorch device.
-    Returns:
-        Autocast manager object if using half precision, otherwise null context
-    """
-    manager = None
-    if dtype in (torch.float16, torch.bfloat16):
-        # Note some devices do not support autocasting, and will raise an error.
-        _validate_device_from_env(device)
-        return torch.autocast(
-            device_type=device.type,
-            dtype=dtype,
-        )
-    else:
-        return contextlib.nullcontext()
-
-
 @contextlib.contextmanager
 def set_default_dtype(dtype: torch.dtype) -> Generator[None, None, None]:
+    """
+    Context manager to set torch's default dtype.
+
+    Args:
+        dtype (:class:`torch.dtype`): The desired default dtype inside the context manager.
+
+    Returns:
+        ContextManager: context manager for setting default dtype.
+
+    Example:
+        >>> with set_default_dtype(torch.bfloat16):
+        >>>     x = torch.tensor([1, 2, 3])
+        >>>     x.dtype
+        torch.bfloat16
+
+
+    """
     old_dtype = torch.get_default_dtype()
     torch.set_default_dtype(dtype)
     try:
@@ -181,8 +149,8 @@ def validate_expected_param_dtype(
     Validates that all input parameters have the expected dtype.
 
     Args:
-        named_params (Iterable[Tuple[str, nn.Parameter]]): Iterable of named parameters.
-        dtype (torch.dtype): Expected dtype.
+        named_params (Iterable[Tuple[str, :class:`torch.nn.Parameter`]]): Iterable of named parameters.
+        dtype (:class:`torch.dtype`): Expected dtype.
 
     Raises:
         ValueError: If any parameter has a different dtype than `dtype`.
