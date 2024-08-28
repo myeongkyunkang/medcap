@@ -47,7 +47,7 @@ Follow the instructions on the official [Meta-Llama-3.1-8B-Instruct](https://hug
 Once you have confirmed access, download the weights to your local machine.
 Afterward, download the vision encoder [medcap-textplus-pmcoa-patients-llama3.1](https://huggingface.co/myeongkyunkang/medcap-textplus-pmcoa-patients-llama3.1) to your local machine.
 
-## SLAKE evaluation
+## OmniMedVQA evaluation
 
 ### Running a test script for OmniMedVQA
 
