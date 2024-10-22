@@ -124,14 +124,20 @@ def generate(
     # generate the first tokens conditioned on the prompt
     input_pos = torch.arange(0, model.max_seq_len, device=prompt.device)
     model.skip_visual = True  # for minor speed improvements # UPDATED
-    image = model.projector(model.visual(image)).detach() if image is not None else None  # UPDATED
+    if (image is not None) and (image.shape[-1] in [224, 448]) and (image.shape[-2] in [224, 448]):  # UPDATED
+        image_feat = model.visual(image)  # UPDATED
+        if not torch.is_tensor(image_feat):  # UPDATED
+            image_feat = image_feat.pooler_output  # UPDATED
+        image_feat = model.projector(image_feat).detach()  # UPDATED
+    else:  # UPDATED
+        image_feat = image  # UPDATED
     tokens = generate_next_token(
         model,
         input_pos=input_pos[:prompt_length],
         x=prompt,
         temperature=temperature,
         top_k=top_k,
-        image=image,  # UPDATED
+        image=image_feat,  # UPDATED
     )
     generated_tokens = torch.cat([generated_tokens, tokens], dim=-1)
 
@@ -169,7 +175,7 @@ def generate(
             x=tokens,
             temperature=temperature,
             top_k=top_k,
-            image=image,  # UPDATED
+            image=image_feat,  # UPDATED
         )
 
         generated_tokens = torch.cat([generated_tokens, tokens], dim=-1)
@@ -189,6 +195,7 @@ def generate(
         if pad_id != 0:
             generated_tokens[generated_tokens == 0] = pad_id
 
-    del model.skip_visual  # UPDATED
+    if (image is not None) and (image.shape[-1] in [224, 448]) and (image.shape[-2] in [224, 448]):  # UPDATED
+        del model.skip_visual  # UPDATED
 
     return generated_tokens.tolist()

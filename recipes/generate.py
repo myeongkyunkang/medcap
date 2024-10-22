@@ -60,18 +60,23 @@ class InferenceRecipe:
             model_state_dict=ckpt_dict[utils.MODEL_KEY],
             enable_kv_cache=cfg.enable_kv_cache,
         )
-        if 'biomedclip' in cfg.get('vision', ''):  # UPDATED
-            with utils.set_default_dtype(self._dtype), self._device:  # UPDATED
+        with utils.set_default_dtype(self._dtype), self._device:  # UPDATED
+            if cfg.get('vision', '') == 'biomedclip':  # UPDATED
                 import open_clip  # UPDATED
-                visual = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224', device=self._device)[0].visual  # UPDATED
-                projector = nn.Sequential(nn.Linear(512, 4096), nn.GELU(), nn.Linear(4096, 4096 * 50), )  # UPDATED
+                visual = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224', device=self._device)[0].visual.to(dtype=self._dtype)  # UPDATED
+                projector = nn.Sequential(nn.Linear(512, 4096), nn.GELU(), nn.Linear(4096, 4096 * 50), ).to(device=self._device, dtype=self._dtype)  # UPDATED
+            elif cfg.get('vision', '') == 'internvl':  # UPDATED
+                from torchtune.models.modeling_intern_vit import InternVisionModel, InternVisionConfig  # UPDATED
+                visual = InternVisionModel(InternVisionConfig(image_size=448, num_hidden_layers=45, initializer_range=1e-10, use_flash_attn=False)).to(device=self._device, dtype=self._dtype)  # UPDATED
+                projector = nn.Sequential(nn.Linear(3200, 4096), nn.GELU(), nn.Linear(4096, 4096 * 50), ).to(device=self._device, dtype=self._dtype)  # UPDATED
+            else:  # UPDATED
+                raise ValueError('Invalid vision:', cfg.get('vision', ''))  # UPDATED
+            if cfg.get('vision', '') != '':  # UPDATED
                 state_dict = torch.load(cfg.vision_checkpoint, map_location=torch.device('cpu'), weights_only=True)  # UPDATED
                 visual.load_state_dict(state_dict['visual'])  # UPDATED
                 projector.load_state_dict(state_dict['projector'])  # UPDATED
-                self._model.visual = visual  # UPDATED
-                self._model.projector = projector  # UPDATED
-        else:  # UPDATED
-            raise ValueError('Invalid vision:', cfg.get('vision', ''))  # UPDATED
+                self._model.visual = visual.eval()  # UPDATED
+                self._model.projector = projector.eval()  # UPDATED
         self._tokenizer = config.instantiate(cfg.tokenizer)
 
     def _setup_model(
@@ -203,24 +208,21 @@ def main(cfg: DictConfig) -> None:
 
     ##################
     # UPDATED
-    ckp_name = os.path.basename(cfg.vision_checkpoint).split(".")[0]
+    os.makedirs(cfg.output_dir, exist_ok=True)
+    ckpt_name = os.path.basename(cfg.vision_checkpoint).split(".")[0]
     if cfg.get('test_metrics', False):
         text_metrics, out_dict = test_metrics(recipe, cfg)
-        pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'metrics-raw-{ckp_name}.csv'), index=False, encoding='utf-8-sig')
-        with open(os.path.join(cfg.output_dir, f'metrics-{ckp_name}.csv'), 'wt') as f:
+        pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'metrics-raw-{ckpt_name}.csv'), index=False, encoding='utf-8-sig')
+        with open(os.path.join(cfg.output_dir, f'metrics-{ckpt_name}.csv'), 'wt') as f:
             for metric, score in text_metrics:
                 f.write(f'{metric},{score:.6f}\n')
     if cfg.get('test_vqarad', False):
         out_dict = test_vqarad(recipe, cfg)
-        pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'vqarad-{cfg.vqa_type}-raw-{ckp_name}.csv'), index=False, encoding='utf-8-sig')
+        pd.DataFrame(out_dict).to_csv(os.path.join(cfg.output_dir, f'vqarad-{cfg.vqa_type}-raw-{ckpt_name}.csv'), index=False, encoding='utf-8-sig')
     if cfg.get('test_omnimedvqa', False):
-        test_chunk_idx, test_chunk = cfg.get('test_chunk_idx', 0), cfg.get('test_chunk', 50)
-        save_path = os.path.join(cfg.output_dir, f'omnimedvqa-{cfg.vqa_type}-raw-{ckp_name}-{test_chunk_idx}_{test_chunk}.csv')
-        if not os.path.isfile(save_path):
-            out_dict = test_omnimedvqa(recipe, cfg)
-            pd.DataFrame(out_dict).to_csv(save_path, index=False, encoding='utf-8-sig')
-        out_dict = pd.read_csv(save_path)
-        acc, out_dict = eval_vqa(recipe, cfg, out_dict)
+        test_chunk_idx, test_chunk = cfg.get('test_chunk_idx', 0), cfg.get('test_chunk', -1)
+        save_path = os.path.join(cfg.output_dir, f'omnimedvqa-{cfg.vqa_type}-raw-{ckpt_name}-{test_chunk_idx}_{test_chunk}.csv')
+        acc, out_dict = test_omnimedvqa(recipe, cfg)
         pd.DataFrame(out_dict).to_csv(save_path.replace('.csv', f'-{round(acc, 4)}.csv'), index=False, encoding='utf-8-sig')
     ##################
 

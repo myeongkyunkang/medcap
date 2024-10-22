@@ -7,7 +7,7 @@ import pandas as pd
 
 random.seed(0)
 
-MRI_TOKENS = '①' * 50
+VISION_TOKENS = '①' * 50
 INSTRUCTION_LIST = [
     "Describe the image in a detailed and informative manner.", "Summarize the visual content of the image clearly.", "Provide a rich, descriptive narrative of the image.", "Offer a brief but comprehensive description of the image.", "Analyze the image thoroughly and in detail.", "Narrate the contents of the image with precision.", "Give a detailed account of the given image.", "Describe the following image in detail.", "Examine the image closely and share its details.",
     "Give a short, clear explanation of the image.", "Break down the elements of the image in detail.", "Relay a brief, clear account of the image shown.", "Share a concise interpretation of the image provided.", "Write a short but informative summary of the image.", "Walk through the important details of the image.", "Explain the various aspects of the image.", "Describe the image concisely.", "Offer a succinct explanation of the image.",
@@ -24,11 +24,11 @@ def convert(data, image_key, image_dir, text_key='text', instruction_type='no', 
     out = []
     for elem in data:
         if instruction_type == 'no':
-            value = MRI_TOKENS
+            value = VISION_TOKENS
         elif instruction_type == 'random':
-            value = MRI_TOKENS + '\n\n' + random.choice(instruction_list)
+            value = VISION_TOKENS + '\n\n' + random.choice(instruction_list)
         elif instruction_type == 'fixed':
-            value = MRI_TOKENS + '\n\n' + random.choice(instruction_list[0])
+            value = VISION_TOKENS + '\n\n' + random.choice(instruction_list[0])
         else:
             raise ValueError('Invalid instruction_type:', instruction_type)
         out.append({

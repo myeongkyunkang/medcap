@@ -21,7 +21,6 @@ from torch.utils.data import DataLoader, DistributedSampler
 from torchtune import config, modules, utils
 from torchtune.datasets import ConcatDataset
 from torchtune.recipe_interfaces import FTRecipeInterface
-from torchtune.utils import OptimizerInBackwardWrapper  # UPDATED
 
 from tqdm import tqdm
 
@@ -208,28 +207,11 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
             compile_model=self._model_compile,
             model_state_dict=ckpt_dict[utils.MODEL_KEY],
         )
-        if 'biomedclip' in cfg.get('vision', ''):  # UPDATED
-            with utils.set_default_dtype(self._dtype), self._device:  # UPDATED
-                import open_clip  # UPDATED
-                visual = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224', device=self._device)[0].visual  # UPDATED
-                projector = nn.Sequential(nn.Linear(512, 4096), nn.GELU(), nn.Linear(4096, 4096 * 50), )  # UPDATED
-                if cfg.get('vision_checkpoint', None) is not None:  # UPDATED
-                    print(f'{cfg.vision_checkpoint} is loaded.')  # UPDATED
-                    state_dict = torch.load(cfg.vision_checkpoint, map_location=torch.device('cpu'), weights_only=True)  # UPDATED
-                    visual.load_state_dict(state_dict['visual'])  # UPDATED
-                    projector.load_state_dict(state_dict['projector'])  # UPDATED
-                self._model.visual = visual  # UPDATED
-                self._model.projector = projector  # UPDATED
-        else:  # UPDATED
-            raise ValueError('Invalid vision:', cfg.get('vision', ''))  # UPDATED
         self._tokenizer = config.instantiate(cfg.tokenizer)
         log.info("Tokenizer is initialized from file.")
 
         # _setup_optimizer should take in ckpt_dict only if training is resumed from
         # checkpoint. Transforming the opt state dict is handled by this method
-        for n, p in self._model.named_parameters():  # UPDATED
-            p.requires_grad_(('visual' in n) or ('projector' in n))  # UPDATED
-        print('trainable params:', [n for n, p in self._model.named_parameters() if p.requires_grad])  # UPDATED
         self._optimizer = self._setup_optimizer(
             cfg_optimizer=cfg.optimizer,
             optimizer_in_bwd=cfg.optimizer_in_bwd,
@@ -314,17 +296,14 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
             # Maintain a dict of optims for every parameter.
             optim_dict = {
                 p: config.instantiate(cfg_optimizer, [p])
-                for p in self._model.parameters() if p.requires_grad  # UPDATED
+                for p in self._model.parameters()
             }
             # Register optimizer step hooks on the model to run optimizer in backward.
-            def optim_step(param) -> None:  # UPDATED
-                optim_dict[param].step()  # UPDATED
-                optim_dict[param].zero_grad()  # UPDATED
-            for p in self._model.parameters():  # UPDATED
-                if p.requires_grad:  # UPDATED
-                    p.register_post_accumulate_grad_hook(optim_step)  # UPDATED
+            utils.register_optim_in_bwd_hooks(model=self._model, optim_dict=optim_dict)
             # Create a wrapper for checkpoint save/load of optimizer states when running in backward.
-            self._optim_ckpt_wrapper = OptimizerInBackwardWrapper({n: optim_dict[p] for n, p in self._model.named_parameters() if p.requires_grad})  # UPDATED
+            self._optim_ckpt_wrapper = utils.create_optim_in_bwd_wrapper(
+                model=self._model, optim_dict=optim_dict
+            )
             # Load optimizer states. If optimizer states are being restored in an optimizer in backward
             # run, these need to have been saved with the same setting. Cannot restore from runs that did not
             # use optimizer in backward.
@@ -386,7 +365,6 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
             )
             if not packed
             else None,
-            num_workers=8,  # UPDATED
         )
 
         log.info("Dataset and Sampler are initialized.")
@@ -432,8 +410,6 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
         if not self._optimizer_in_bwd:
             self._optimizer.zero_grad()
 
-        t = time.time()  # UPDATED
-
         # Initialize tokens count and running loss (for grad accumulation)
         t0 = time.perf_counter()
         running_loss = 0
@@ -469,10 +445,7 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
                     input_pos.to(self._device) if input_pos is not None else None
                 )
 
-                image = batch.get("image", None)  # UPDATED
-                image = image.to(device=self._device, dtype=self._dtype) if image is not None else None  # UPDATED
-
-                logits = self._model(tokens, mask=mask, input_pos=input_pos, image=image)  # UPDATED
+                logits = self._model(tokens, mask=mask, input_pos=input_pos)
                 # Shift so that tokens < n predict n
                 logits = logits[..., :-1, :].contiguous()
                 labels = labels[..., 1:].contiguous()
@@ -518,10 +491,6 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
                             log_dict,
                             step=self.global_step,
                         )
-                        if (time.time() - t) > 28800:  # 8 hours # UPDATED
-                            os.makedirs(self._checkpointer._output_dir, exist_ok=True)  # UPDATED
-                            torch.save({'visual': self._model.visual.state_dict(), 'projector': self._model.projector.state_dict()}, os.path.join(self._checkpointer._output_dir, f'meta_model_last.pt'))  # UPDATED
-                            t = time.time()  # UPDATED
 
                     # Reset running stats for the next step
                     running_loss = 0
@@ -529,8 +498,7 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
                     t0 = time.perf_counter()
 
             self.epochs_run += 1
-            os.makedirs(self._checkpointer._output_dir, exist_ok=True)  # UPDATED
-            torch.save({'visual': self._model.visual.state_dict(), 'projector': self._model.projector.state_dict()}, os.path.join(self._checkpointer._output_dir, f'meta_model_{curr_epoch}.pt'))  # UPDATED
+            self.save_checkpoint(epoch=curr_epoch)
 
     def cleanup(self) -> None:
         self._metric_logger.close()

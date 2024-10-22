@@ -227,8 +227,10 @@ class TransformerDecoder(nn.Module):
         # shape: [b, s, d]
         h = self.tok_embeddings(tokens)
         if image is not None:  # UPDATED
-            if hasattr(self, "visual") and (not hasattr(self, "skip_visual")):  # UPDATED
+            if hasattr(self, 'visual') and (not hasattr(self, 'skip_visual')):  # UPDATED
                 image = self.visual(image)  # UPDATED
+                if not torch.is_tensor(image):  # UPDATED
+                    image = image.pooler_output  # UPDATED
                 image = self.projector(image)  # UPDATED
             image = image.reshape(bsz, -1, 4096)  # -1 is the number of tokens. # UPDATED
             h[tokens == 118075] = image.reshape(-1, image.shape[-1])  # ①(=118075) # UPDATED

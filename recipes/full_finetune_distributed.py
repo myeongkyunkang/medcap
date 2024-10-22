@@ -202,6 +202,11 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
             # log config with parameter override
             self._metric_logger.log_config(cfg)
 
+        if self._is_rank_zero:  # UPDATED
+            os.makedirs(cfg.checkpointer.output_dir, exist_ok=True)  # UPDATED
+        else:  # UPDATED
+            time.sleep(1)  # UPDATED
+
         ckpt_dict = self.load_checkpoint(cfg.checkpointer)
 
         # ``_setup_model`` handles initialization and loading the state dict. This method
@@ -216,27 +221,48 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
             ac_mode=cfg.get("ac_mode", None),
             ac_option=cfg.get("ac_option", None),
         )
-        if 'biomedclip' in cfg.get('vision', ''):  # UPDATED
+        if cfg.get('vision', '') == 'biomedclip':  # UPDATED
             with utils.set_default_dtype(self._dtype), self._device:  # UPDATED
                 import open_clip  # UPDATED
-                visual = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224', device=self._device)[0].visual  # UPDATED
-                projector = nn.Sequential(nn.Linear(512, 4096), nn.GELU(), nn.Linear(4096, 4096 * 50), )  # UPDATED
-                if cfg.get('vision_checkpoint', None) is not None:  # UPDATED
-                    print(f'{cfg.vision_checkpoint} is loaded.')  # UPDATED
-                    state_dict = torch.load(cfg.vision_checkpoint, map_location=torch.device('cpu'), weights_only=True)  # UPDATED
-                    visual.load_state_dict(state_dict['visual'])  # UPDATED
-                    projector.load_state_dict(state_dict['projector'])  # UPDATED
-                self._model.module.visual = visual  # UPDATED
-                self._model.module.projector = projector  # UPDATED
+                visual = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224', device=self._device)[0].visual.to(dtype=self._dtype)  # UPDATED
+                projector = nn.Sequential(nn.Linear(512, 4096), nn.GELU(), nn.Linear(4096, 4096 * 50), ).to(device=self._device, dtype=self._dtype)  # UPDATED
+        elif cfg.get('vision', '') == 'internvl':  # UPDATED
+            from torchtune.models.modeling_intern_vit import InternVisionModel, InternVisionConfig  # UPDATED
+            visual = InternVisionModel(InternVisionConfig(image_size=448, num_hidden_layers=45, initializer_range=1e-10, use_flash_attn=False)).to(device=self._device, dtype=self._dtype)  # UPDATED
+            projector = nn.Sequential(nn.Linear(3200, 4096), nn.GELU(), nn.Linear(4096, 4096 * 50), ).to(device=self._device, dtype=self._dtype)  # UPDATED
         else:  # UPDATED
             raise ValueError('Invalid vision:', cfg.get('vision', ''))  # UPDATED
+        if cfg.get('vision', '') != '':  # UPDATED
+            if cfg.get('vision_checkpoint', None) is not None:  # UPDATED
+                print(f'{cfg.vision_checkpoint} is loaded.')  # UPDATED
+                state_dict = torch.load(cfg.vision_checkpoint, map_location=torch.device('cpu'), weights_only=True)  # UPDATED
+                try:  # UPDATED
+                    visual.load_state_dict(state_dict['visual'])  # UPDATED
+                    projector.load_state_dict(state_dict['projector'])  # UPDATED
+                except:  # UPDATED
+                    visual.load_state_dict(state_dict)  # UPDATED
+            self._model.module.visual = visual  # UPDATED
+            self._model.module.projector = projector  # UPDATED
 
         self._tokenizer = config.instantiate(cfg.tokenizer)
 
         # _setup_optimizer should take in ckpt_dict only if training is resumed from
         # checkpoint. Transforming the opt state dict is handled by this method
         for n, p in self._model.named_parameters():  # UPDATED
-            p.requires_grad_(('visual' in n) or ('projector' in n))  # UPDATED
+            if cfg.get('projector_only', False):  # UPDATED
+                p.requires_grad_('.projector.' in n)  # UPDATED
+            else:  # UPDATED
+                if cfg.get('vision', '') == 'internvl':  # UPDATED
+                    p.requires_grad_(  # UPDATED
+                            ('.visual.' in n and '.mlp.fc2.' in n) or  # UPDATED
+                            ('.visual.' in n and '.ls2' in n) or  # UPDATED
+                            ('.visual.embeddings.class_embedding' in n) or  # UPDATED
+                            ('.projector.' in n)  # UPDATED
+                        )  # UPDATED
+                else:  # UPDATED
+                    p.requires_grad_(('.visual.' in n) or ('.projector.' in n))  # UPDATED
+        if self._is_rank_zero:  # UPDATED
+            print('Trainable params:', [n for n, p in self._model.named_parameters() if p.requires_grad])  # UPDATED
         self._optimizer = self._setup_optimizer(
             cfg_optimizer=cfg.optimizer,
             opt_state_dict=ckpt_dict[utils.OPT_KEY]
@@ -252,6 +278,7 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
             cfg_dataset=cfg.dataset,
             shuffle=cfg.shuffle,
             batch_size=cfg.batch_size,
+            vision=cfg.get('vision', ''),  # UPDATED
         )
 
         # Finally update the recipe state which can only be correctly set after all of the
@@ -398,6 +425,7 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
         cfg_dataset: DictConfig,
         shuffle: bool,
         batch_size: int,
+        vision: str,  # UPDATED
     ) -> Tuple[DistributedSampler, DataLoader]:
         """
         All data related setup happens here. Currently this recipe only supports the
@@ -408,13 +436,13 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
 
         if isinstance(cfg_dataset, ListConfig):
             datasets = [
-                config.instantiate(single_cfg_dataset, tokenizer=self._tokenizer)
+                config.instantiate(single_cfg_dataset, tokenizer=self._tokenizer, vision=vision)  # UPDATED
                 for single_cfg_dataset in cfg_dataset
             ]
             ds = ConcatDataset(datasets=datasets)
             packed = False
         else:
-            ds = config.instantiate(cfg_dataset, tokenizer=self._tokenizer)
+            ds = config.instantiate(cfg_dataset, tokenizer=self._tokenizer, vision=vision)  # UPDATED
             packed = cfg_dataset.get("packed", False)
 
         sampler = DistributedSampler(
@@ -583,8 +611,8 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
                             step=self.global_step,
                         )
                         if self._is_rank_zero and (time.time() - t) > 28800:  # 8 hours # UPDATED
-                            os.makedirs(self._checkpointer._output_dir, exist_ok=True)  # UPDATED
-                            torch.save({'visual': self._model.visual.state_dict(), 'projector': self._model.projector.state_dict()}, os.path.join(self._checkpointer._output_dir, f'meta_model_last.pt'))  # UPDATED
+                            state_dict = {'visual': self._model.visual.state_dict(), 'projector': self._model.projector.state_dict()}  # UPDATED
+                            torch.save(state_dict, os.path.join(self._checkpointer._output_dir, f'meta_model_last.pt'))  # UPDATED
                             t = time.time()  # UPDATED
 
                     # Reset running stats for the next step
@@ -594,8 +622,8 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
 
             self.epochs_run += 1
             if self._is_rank_zero:  # UPDATED
-                os.makedirs(self._checkpointer._output_dir, exist_ok=True)  # UPDATED
-                torch.save({'visual': self._model.visual.state_dict(), 'projector': self._model.projector.state_dict()}, os.path.join(self._checkpointer._output_dir, f'meta_model_{curr_epoch}.pt'))  # UPDATED
+                state_dict = {'visual': self._model.visual.state_dict(), 'projector': self._model.projector.state_dict()}  # UPDATED
+                torch.save(state_dict, os.path.join(self._checkpointer._output_dir, f'meta_model_{curr_epoch}.pt'))  # UPDATED
 
     def cleanup(self) -> None:
         if self._is_rank_zero:

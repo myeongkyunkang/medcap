@@ -82,27 +82,3 @@ os.system(cmd)
 test_vqarad=True
 dataset_source=./datasets/
 ```
-
-### Running VQA evaluation using Meta-Llama-3.1-70B-Instruct
-
-```
-python
-import os
-GPU=0
-bit=4
-name='vqarad'
-vision='biomedclip'
-epoch=5
-llama_dir='./models/llama3/Meta-Llama-3.1-70B-Instruct'
-result_dir='./results_medcap'
-postfix_result=''
-vqa_name='vqarad'
-vqa_type='no_cond_desc'
-cmd=f"CUDA_VISIBLE_DEVICES={GPU} python chat_llama3_quant.py \
-    --bit {bit} \
-    --ckpt_dir {llama_dir} \
-    --exp eval_vqa \
-    --csv_path {result_dir}/{name}_{vision}{postfix_result}/{vqa_name}-{vqa_type}-raw-meta_model_{epoch}.csv"
-print(cmd)
-os.system(cmd)
-```

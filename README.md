@@ -33,7 +33,6 @@ Check via Ctrl+F "# UPDATED" # less than 100 lines updated
 Add recipes/configs/custom_generation_config.yaml  # use "tune cp generation" and update to be compatible with llama3
 Add torchtune/custom_generate_func.py  # for custom testing
 Update recipes/full_finetune_distributed.py
-Update recipes/full_finetune_single_device.py
 Update recipes/generate.py
 Update torchtune/datasets/_chat.py
 Update torchtune/modules/transformer.py
@@ -68,6 +67,7 @@ test='omnimedvqa'
 vqa_type='no_cond_desc'
 cmd=f"PYTHONPATH=./ CUDA_VISIBLE_DEVICES={GPU} python torchtune/_cli/tune.py run recipes/generate.py --config recipes/configs/custom_generation_config.yaml \
     test_{test}=True \
+    test_chunk=-1 \
     vqa_type={vqa_type} \
     seed=1 \
     max_new_tokens=200 \

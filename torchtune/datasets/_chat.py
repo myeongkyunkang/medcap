@@ -24,9 +24,9 @@ from torchtune.modules.tokenizers import ModelTokenizer
 
 import json  # UPDATED
 import os  # UPDATED
-from copy import deepcopy  # UPDATED
+import random  # UPDATED
 import open_clip  # UPDATED
-from PIL import Image  # UPDATED
+from PIL import Image, ImageOps  # UPDATED
 
 class ChatDataset(Dataset):
     """
@@ -92,10 +92,19 @@ class ChatDataset(Dataset):
         self.chat_format = chat_format
         self.max_seq_len = max_seq_len
         self.train_on_input = train_on_input
-        self.preprocess = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224')[2]  # use testing preprocess # UPDATED
-        self.preprocess_224 = deepcopy(self.preprocess)  # UPDATED
-        del self.preprocess_224.transforms[0]  # remove Resize(size=224, interpolation=bicubic, max_size=None, antialias=True) # UPDATED
-        del self.preprocess_224.transforms[0]  # remove CenterCrop(size=(224, 224)) # UPDATED
+        if load_dataset_kwargs.get('vision', '') == 'biomedclip':  # UPDATED
+            self.preprocess = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224')[2]  # use testing preprocess # UPDATED
+        elif load_dataset_kwargs.get('vision', '') == 'internvl':  # UPDATED
+            import torchvision.transforms as T  # UPDATED
+            IMAGENET_MEAN, IMAGENET_STD = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)  # UPDATED
+            transform = T.Compose([T.ToTensor(), T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD), ])  # UPDATED
+            def preprocess_func(img):  # UPDATED
+                img = img.resize((448, int(448 * img.size[1] / img.size[0])) if img.size[0] > img.size[1] else (int(448 * img.size[0] / img.size[1]), 448), resample=3)  # UPDATED
+                max_dim, min_dim = max(img.size), min(img.size)  # UPDATED
+                padding = [(max_dim - dim) // 2 for dim in img.size]  # UPDATED
+                img = ImageOps.expand(img, border=(padding[0], padding[1], max_dim - img.size[0] - padding[0], max_dim - img.size[1] - padding[1]))  # UPDATED
+                return transform(img)  # UPDATED
+            self.preprocess = preprocess_func  # UPDATED
 
     def __len__(self):
         return len(self._data)
@@ -123,8 +132,14 @@ class ChatDataset(Dataset):
         img = None  # UPDATED
         if meta != '':  # UPDATED
             meta_dict = dict(m.split('=') for m in meta.split(';'))  # UPDATED
-            img = Image.open(os.path.join(meta_dict['dir'], f"{image}"))  # UPDATED
-            img = self.preprocess_224(img) if (img.size[0] == 224 and img.size[1] == 224) else self.preprocess(img)  # UPDATED
+            try:  # UPDATED
+                img = Image.open(os.path.join(meta_dict['dir'], image)).convert('RGB')  # UPDATED
+                if img.size[0] < 20 or img.size[1] < 20:  # UPDATED
+                    return self._prepare_sample(random.choice(self._data))  # UPDATED
+                img = self.preprocess(img)  # UPDATED
+            except:  # UPDATED
+                print('error:', os.path.join(meta_dict['dir'], image))  # UPDATED
+                return self._prepare_sample(random.choice(self._data))  # UPDATED
         return {"tokens": tokens, "labels": labels, "image": img}
 
 
