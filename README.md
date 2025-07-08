@@ -2,31 +2,9 @@
 
 <img src="diagram.jpg">
 
-## Introduction
-
-**Why Fine-Tune Only the Vision Encoder?**
-We assume that publicly available instruction-tuned LLMs (e.g., Meta-Llama-3.1-8B-Instruct) have high generalization capabilities.
-Instead of struggling to prevent LLM overfitting, we freeze LLM parameters during fine-tuning and focus on enhancing the vision input.
-By using vision encoders compatible with LLMs that offer high-quality representation, this approach is expected to leverage the LLMs' generalization abilities, reducing concerns about overfitting to in-house data.
-Moreover, a vision encoder trained with LLMs enables high-quality feature extraction, which is expected to show superior performance in various downstream tasks.
-
-Key features added in this repository include:
-
-- Enabling LLMs to process image inputs.
-- Training the vision encoder while keeping the LLMs frozen.
-
-**Backgrounds.**
-When using Large Language Models (LLMs) with in-house data, we often experience that LLMs do not perform as well as they do with natural images.
-To address this, people construct an in-house instruction dataset and use it to fine-tune LLMs.
-However, even with this fine-tuning, the models still struggle with out-of-scope inputs (i.e., overfitting), manifesting as:
-
-- Degraded performance in **external** validation.
-- Poor responses to **unexpected** questions.
-- **Overfitting** to the training chat format (e.g., weak performance in visual question-answering tasks when fine-tuned with image-caption pairs).
-
-**Design Principle.**
+We freeze the LLM parameters during fine-tuning and focus on adapting the vision encoder to the target dataset.
 This repository is designed to develop image captioning and visual question answering with minimal effort.
-To achieve this, we have made minimal modifications to the original torchtune codebase, ensuring easy tracking of changes.
+We made only minimal modifications to the original torchtune codebase, ensuring that changes are easy to track.
 
 ```
 Check via Ctrl+F "# UPDATED" # less than 100 lines updated
